@@ -1,0 +1,52 @@
+"use client";
+
+export type Identity = { userId: string; deviceKey: string };
+
+const KEY = "sm.identity";
+
+export function loadIdentity(): Identity | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? (JSON.parse(raw) as Identity) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveIdentity(identity: Identity | null) {
+  try {
+    if (identity) localStorage.setItem(KEY, JSON.stringify(identity));
+    else localStorage.removeItem(KEY);
+  } catch {
+    // private mode: identity lasts for this tab only
+  }
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+
+/** fetch wrapper: JSON in/out, adds the demo identity headers, throws ApiError with the server's message. */
+export async function api<T>(path: string, opts: { method?: string; body?: unknown; identity?: Identity | null } = {}) {
+  const identity = opts.identity === undefined ? loadIdentity() : opts.identity;
+  const res = await fetch(path, {
+    method: opts.method ?? (opts.body === undefined ? "GET" : "POST"),
+    headers: {
+      ...(opts.body !== undefined ? { "content-type": "application/json" } : {}),
+      ...(identity ? { "x-user-id": identity.userId, "x-device-key": identity.deviceKey } : {}),
+    },
+    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError((data as { error?: string }).error ?? res.statusText, res.status);
+  return data as T;
+}
+
+export const fetcher = <T,>(path: string) => api<T>(path);
+
+export const roomPath = (name: string) => `/g/${encodeURIComponent(name)}`;
