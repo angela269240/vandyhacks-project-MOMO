@@ -25,7 +25,7 @@ export type Layout = {
 };
 
 /** Rough on-screen radius of a bubble with n people (world units). */
-export const clusterRadius = (n: number, scale = 1) => (50 + 30 * Math.sqrt(Math.max(n, 1))) * scale;
+export const clusterRadius = (n: number, scale = 1) => (70 + 60 * Math.sqrt(Math.max(n, 1))) * scale;
 
 /**
  * Places bubbles along a golden-angle spiral, pushing each one outward until it clears every bubble

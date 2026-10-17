@@ -59,9 +59,9 @@ type Props = {
   onReady: (api: MapApi) => void;
 };
 
-const NODE_R = 14;
+const NODE_R = 28;
 const UNFOCUSED_SCALE = 0.55;
-const BLOB_PAD = 40;
+const BLOB_PAD = 60;
 const ARRIVED = 230; // members farther than this from their anchor are still travelling
 const DOUBLE_CLICK_MS = 260;
 const INTEREST_COLOR = new Map(INTERESTS.map((i) => [i.id, i.color]));
@@ -95,6 +95,7 @@ export default function SocialGraph(props: Props) {
   const drag = useRef<{ node: NodeData; startX: number; startY: number; moved: boolean } | null>(null);
   const suppressClick = useRef(false);
   const pendingClick = useRef<{ groupId: number; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const cardPlacement = useRef<{ id: string; side: "left" | "right" } | null>(null);
   const scrubBase = useRef<number | null>(null);
   const motionOK = useRef(true);
   const fonts = useRef({ sans: "sans-serif", heading: "sans-serif" });
@@ -144,7 +145,7 @@ export default function SocialGraph(props: Props) {
   const applyCollide = useCallback(() => {
     fgRef.current?.d3Force(
       "collide",
-      forceCollide<NodeData>((n) => (isFocused(n) ? 30 : 30 * UNFOCUSED_SCALE)) as never,
+      forceCollide<NodeData>((n) => (isFocused(n) ? NODE_R * 2.15 : NODE_R * 2.15 * UNFOCUSED_SCALE)) as never,
     );
   }, []);  
 
@@ -356,12 +357,13 @@ export default function SocialGraph(props: Props) {
         const members = arrived.length ? arrived : all;
         let pts: Pt[] = [];
         if (members.length) {
-          for (const m of members) {
-            for (let i = 0; i < 12; i++) {
-              const a = (i / 12) * Math.PI * 2;
-              pts.push([(m.x ?? 0) + Math.cos(a) * pad, (m.y ?? 0) + Math.sin(a) * pad]);
-            }
-          }
+          const cx = members.reduce((sum, m) => sum + (m.x ?? 0), 0) / members.length;
+          const cy = members.reduce((sum, m) => sum + (m.y ?? 0), 0) / members.length;
+          const radius = Math.max(...members.map((m) => Math.hypot((m.x ?? 0) - cx, (m.y ?? 0) - cy))) + pad;
+          pts = Array.from({ length: 32 }, (_, i) => {
+            const a = (i / 32) * Math.PI * 2;
+            return [cx + Math.cos(a) * radius, cy + Math.sin(a) * radius] as Pt;
+          });
         } else {
           const c = home ?? { x: 0, y: 0 };
           const r = 60 * scale;
@@ -610,10 +612,14 @@ export default function SocialGraph(props: Props) {
     const p = fg.graph2ScreenCoords(pos.x, pos.y);
     const w = card.offsetWidth;
     const h = card.offsetHeight;
-    let x = p.x + 34;
-    if (x + w > window.innerWidth - 12) x = p.x - 34 - w;
+    if (cardPlacement.current?.id !== selectedId) {
+      cardPlacement.current = { id: selectedId, side: p.x > window.innerWidth / 2 ? "left" : "right" };
+    }
+    const side = cardPlacement.current.side;
+    const preferredX = side === "right" ? p.x + NODE_R + 16 : p.x - NODE_R - 16 - w;
+    const x = Math.max(12, Math.min(preferredX, window.innerWidth - w - 12));
     const y = Math.max(120, Math.min(p.y - h / 2, window.innerHeight - h - 12));
-    card.style.transform = `translate3d(${Math.max(12, x)}px, ${y}px, 0)`;
+    card.style.transform = `translate3d(${x}px, ${y}px, 0)`;
   }, [nodes]);  
 
   const groupAt = (sx: number, sy: number) => {
@@ -636,10 +642,26 @@ export default function SocialGraph(props: Props) {
       className="absolute inset-0"
       // Your own circle can be dragged: drop it in another bubble to join, or anywhere to park it.
       onPointerDownCapture={(e) => {
-        const n = hoverNode.current;
-        if (inRoom || !n || n.id !== propsRef.current.meId || e.button !== 0) return;
+        const n = propsRef.current.meId ? nodes.get(propsRef.current.meId) : null;
+        const fg = fgRef.current;
+        if (inRoom || !n || !fg || e.button !== 0) return;
+        const p = localPoint(e);
+        const pointer = fg.screen2GraphCoords(p.x, p.y);
+        const avatar = renderPos(n);
+        if (Math.hypot(pointer.x - avatar.x, pointer.y - avatar.y) > NODE_R * 1.25) return;
         drag.current = { node: n, startX: e.clientX, startY: e.clientY, moved: false };
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onWheelCapture={(e) => {
+        if (inRoom) return;
+        const delta = e.shiftKey && Math.abs(e.deltaX) < 1 ? e.deltaY : e.deltaX;
+        if (Math.abs(delta) <= Math.abs(e.deltaY) && !e.shiftKey) return;
+        const fg = fgRef.current;
+        if (!fg) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const camera = fg.centerAt();
+        fg.centerAt(camera.x + delta / fg.zoom(), camera.y, 0);
       }}
       onPointerMove={(e) => {
         const d = drag.current;
