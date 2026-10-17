@@ -31,7 +31,7 @@ export function ScreenSharePanel({ share, ownerName, index }: { share: ScreenSha
     >
       <div
         onPointerDown={(e) => controls.start(e)}
-        className="flex cursor-grab touch-none items-center gap-2 border-b border-white/10 px-3 py-1.5 text-xs text-muted-foreground select-none active:cursor-grabbing"
+        className="flex cursor-grab touch-none items-center gap-2 border-b border-foreground/10 px-3 py-1.5 text-xs text-muted-foreground select-none active:cursor-grabbing"
       >
         <MonitorUp className="size-3.5" /> {ownerName}&apos;s screen
         <GripHorizontal className="ml-auto size-3.5 opacity-60" />

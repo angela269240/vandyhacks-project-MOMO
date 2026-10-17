@@ -1,5 +1,7 @@
 "use client";
 
+import type { MapApi } from "@/components/map/SocialGraph";
+
 /**
  * Tiny shared state between the always-mounted map and the room overlay
  * (they live in the same layout, so the map keeps its simulation and camera while you're in a room).
@@ -8,10 +10,6 @@ type Camera = { x: number; y: number; k: number };
 
 type SceneEvents = {
   "pulse-group": number;
-  /** room overlay is about to reveal the map again (scroll-out scrub started or exit committed) */
-  "map-resume": void;
-  /** the room overlay is fully covering the map */
-  "map-pause": void;
 };
 
 type Handler<T> = (payload: T) => void;
@@ -29,6 +27,10 @@ export const sceneEvents = {
 };
 
 export const scene: {
-  /** camera before zooming into a group, restored when coming back out */
+  /** camera before zooming into a group */
   cameraBeforeRoom: Camera | null;
-} = { cameraBeforeRoom: null };
+  /** live voice levels (identity → 0..1) published by the room, read by the map every frame */
+  levels: Map<string, number>;
+  /** the live map, so the room can drive its camera (scroll-out scrub) */
+  mapApi: MapApi | null;
+} = { cameraBeforeRoom: null, levels: new Map(), mapApi: null };

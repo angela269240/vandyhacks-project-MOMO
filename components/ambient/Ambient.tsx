@@ -21,7 +21,7 @@ export function Ambient() {
             width: a.size,
             height: a.size,
             background: `radial-gradient(circle, ${a.color} 0%, transparent 65%)`,
-            opacity: 0.08,
+            opacity: "var(--aura-opacity, 0.08)",
             animation: `aura-drift ${a.duration} ease-in-out ${a.delay} infinite`,
           }}
         />

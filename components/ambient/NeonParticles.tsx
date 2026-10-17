@@ -55,7 +55,9 @@ export function NeonParticles({ count = 40 }: { count?: number }) {
     let raf = 0;
     const draw = (t: number) => {
       ctx.clearRect(0, 0, w, h);
-      ctx.globalCompositeOperation = "lighter";
+      const light = document.documentElement.classList.contains("light");
+      // additive glow vanishes on white, so white mode paints them normally and softer
+      ctx.globalCompositeOperation = light ? "source-over" : "lighter";
       for (const p of particles) {
         if (!reduced) {
           p.x += p.vx;
@@ -67,7 +69,7 @@ export function NeonParticles({ count = 40 }: { count?: number }) {
         }
         const twinkle = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(t / 1000 * p.speed + p.phase));
         const size = p.r * 10;
-        ctx.globalAlpha = twinkle;
+        ctx.globalAlpha = light ? twinkle * 0.55 : twinkle;
         ctx.drawImage(sprites[p.color], p.x - size / 2, p.y - size / 2, size, size);
       }
       ctx.globalAlpha = 1;

@@ -1,6 +1,6 @@
 import oracledb from "oracledb";
 import { query, withConnection } from "../db";
-import type { ChatHour, ChatMessage, Group, Interest, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, Group, Interest, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
@@ -14,12 +14,15 @@ type UserRow = {
   IN_ROOM: number;
   LEFT_GROUP_AT: Date | null;
   INTEREST_IDS: string | null;
+  MEMBER_OF: string | null;
+  BOOKMARKS: string | null;
 };
 
 type GroupRow = {
   ID: number;
   NAME: string;
   COLOR: string;
+  CATEGORY: string;
   CREATED_BY: string | null;
   CREATED_AT: Date;
   LAST_EXIT_AT: Date | null;
@@ -32,8 +35,13 @@ const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 const USER_SELECT = `
   SELECT u.id, u.name, u.linkedin, u.bio, u.avatar_url, u.current_group_id, u.in_room, u.left_group_at,
          (SELECT LISTAGG(ui.interest_id, ',') WITHIN GROUP (ORDER BY ui.interest_id)
-            FROM user_interests ui WHERE ui.user_id = u.id) AS interest_ids
+            FROM user_interests ui WHERE ui.user_id = u.id) AS interest_ids,
+         (SELECT LISTAGG(gm.group_id, ',') WITHIN GROUP (ORDER BY gm.joined_at)
+            FROM group_members gm WHERE gm.user_id = u.id) AS member_of,
+         JSON_SERIALIZE(u.bookmarks) AS bookmarks
     FROM users u`;
+
+const GROUP_SELECT = `SELECT id, name, color, category, created_by, created_at, last_exit_at FROM interest_groups`;
 
 function toUser(r: UserRow): User {
   return {
@@ -46,6 +54,8 @@ function toUser(r: UserRow): User {
     currentGroupId: r.CURRENT_GROUP_ID,
     inRoom: r.IN_ROOM === 1,
     leftGroupAt: iso(r.LEFT_GROUP_AT),
+    memberOf: r.MEMBER_OF ? r.MEMBER_OF.split(",").map(Number) : [],
+    bookmarks: r.BOOKMARKS ? (JSON.parse(r.BOOKMARKS) as Bookmark[]) : [],
   };
 }
 
@@ -54,6 +64,7 @@ function toGroup(r: GroupRow): Group {
     id: r.ID,
     name: r.NAME,
     color: r.COLOR,
+    category: r.CATEGORY,
     createdBy: r.CREATED_BY,
     createdAt: iso(r.CREATED_AT)!,
     lastExitAt: iso(r.LAST_EXIT_AT),
@@ -129,6 +140,10 @@ export const oracleStore: Store = {
       set("linkedin", "linkedin", patch.linkedin);
       set("bio", "bio", patch.bio);
       set("avatar_url", "avatar", patch.avatarUrl);
+      if (patch.bookmarks !== undefined) {
+        sets.push("bookmarks = JSON(:bookmarks)");
+        binds.bookmarks = JSON.stringify(patch.bookmarks);
+      }
       if (sets.length) await conn.execute(`UPDATE users SET ${sets.join(", ")} WHERE id = :id`, binds);
       if (patch.interestIds) await setInterests(conn, id, patch.interestIds);
       await conn.commit();
@@ -139,7 +154,7 @@ export const oracleStore: Store = {
   async getGraph(now, lingerMs) {
     const [users, groups, friendships] = await Promise.all([
       query<UserRow>(USER_SELECT),
-      query<GroupRow>(`SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups`),
+      query<GroupRow>(GROUP_SELECT),
       query<{ USER_A: string; USER_B: string }>(`SELECT user_a, user_b FROM friendships WHERE status = 'accepted'`),
     ]);
     return buildGraph(
@@ -151,18 +166,19 @@ export const oracleStore: Store = {
     );
   },
 
-  async createGroup(name, color, createdBy) {
+  async createGroup(name, color, category, createdBy) {
     try {
       const rows = await withConnection(async (conn) => {
         const res = await conn.execute(
-          `INSERT INTO interest_groups (name, color, created_by) VALUES (:name, :color, :by) RETURNING id INTO :id`,
-          { name: name.trim(), color, by: createdBy, id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
+          `INSERT INTO interest_groups (name, color, category, created_by)
+           VALUES (:name, :color, :category, :by) RETURNING id INTO :id`,
+          { name: name.trim(), color, category, by: createdBy, id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
         );
         await conn.commit();
         return (res.outBinds as { id: number[] }).id;
       });
       const found = await query<GroupRow>(
-        `SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups WHERE id = :id`,
+        `${GROUP_SELECT} WHERE id = :id`,
         { id: rows[0] },
       );
       return toGroup(found[0]);
@@ -174,7 +190,7 @@ export const oracleStore: Store = {
 
   async getGroupByName(name) {
     const rows = await query<GroupRow>(
-      `SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups WHERE name_key = LOWER(TRIM(:name))`,
+      `${GROUP_SELECT} WHERE name_key = LOWER(TRIM(:name))`,
       { name },
     );
     return rows[0] ? toGroup(rows[0]) : null;
@@ -192,9 +208,15 @@ export const oracleStore: Store = {
         { g: groupId, id: userId },
       );
       await conn.execute(`UPDATE interest_groups SET last_exit_at = NULL WHERE id = :g`, { g: groupId });
+      await conn.execute(
+        `MERGE INTO group_members t USING (SELECT :u AS u, :g AS g FROM dual) s
+            ON (t.user_id = s.u AND t.group_id = s.g)
+          WHEN NOT MATCHED THEN INSERT (user_id, group_id) VALUES (s.u, s.g)`,
+        { u: userId, g: groupId },
+      );
       if (fromGroupId !== null && fromGroupId !== groupId) await markGroupEmptyIfNoneActive(conn, fromGroupId, now);
       const grp = await conn.execute<GroupRow>(
-        `SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups WHERE id = :g`,
+        `${GROUP_SELECT} WHERE id = :g`,
         { g: groupId },
       );
       await conn.commit();
@@ -265,7 +287,7 @@ export const oracleStore: Store = {
   async expireGroups(now, lingerMs) {
     const cutoff = new Date(now.getTime() - lingerMs);
     const rows = await query<GroupRow>(
-      `SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups g
+      `${GROUP_SELECT} g
         WHERE last_exit_at < :cutoff
           AND NOT EXISTS (SELECT 1 FROM users u WHERE u.current_group_id = g.id AND u.in_room = 1)`,
       { cutoff },

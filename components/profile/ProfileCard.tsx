@@ -10,7 +10,7 @@ import { useInterests } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api } from "@/lib/client/api";
 import { INTERESTS } from "@/lib/interests";
-import type { GraphUser } from "@/lib/types";
+import type { GraphGroup, GraphUser } from "@/lib/types";
 import { Avatar } from "./Avatar";
 
 /** lucide dropped brand marks; a minimal LinkedIn glyph in the same stroke style. */
@@ -27,6 +27,8 @@ function LinkedinIcon(props: React.SVGProps<SVGSVGElement>) {
 type Props = {
   user: GraphUser;
   groupName?: string | null;
+  /** every community they've joined (their node shows in only one at a time) */
+  communities?: GraphGroup[];
   onClose: () => void;
   onEditProfile: () => void;
   style?: React.CSSProperties;
@@ -34,7 +36,7 @@ type Props = {
 
 /** Mini profile window. Shared interests glow; the map highlights mutual-connection edges while it's open. */
 export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCard(
-  { user, groupName, onClose, onEditProfile, style },
+  { user, groupName, communities = [], onClose, onEditProfile, style },
   ref,
 ) {
   const interests = useInterests();
@@ -79,7 +81,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
       <button
         aria-label="Close"
         onClick={onClose}
-        className="absolute top-3 right-3 rounded-full p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+        className="absolute top-3 right-3 rounded-full p-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"
       >
         <X className="size-4" />
       </button>
@@ -94,6 +96,18 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
         </div>
       </div>
 
+      {communities.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          <span className="tracking-wider uppercase">Communities</span>
+          {communities.map((g) => (
+            <span key={g.id} className="flex items-center gap-1 text-foreground/80">
+              <span className="size-1.5 rounded-full" style={{ background: g.color }} />
+              {g.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {user.bio && <p className="mt-3 text-sm leading-relaxed text-foreground/85">{user.bio}</p>}
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -105,7 +119,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
             <Badge
               key={id}
               variant="outline"
-              className={shared ? "tag-glow" : "border-white/15 text-muted-foreground"}
+              className={shared ? "tag-glow" : "border-foreground/15 text-muted-foreground"}
               style={{ "--glow": interest.color } as React.CSSProperties}
             >
               {interest.name}

@@ -12,6 +12,7 @@ CREATE TABLE interest_groups (
   name          VARCHAR2(60) NOT NULL,
   name_key      VARCHAR2(60) GENERATED ALWAYS AS (LOWER(TRIM(name))) VIRTUAL,
   color         VARCHAR2(9) NOT NULL,
+  category      VARCHAR2(40) DEFAULT 'Social' NOT NULL,
   created_by    VARCHAR2(36),
   created_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
   last_exit_at  TIMESTAMP WITH TIME ZONE,
@@ -28,7 +29,17 @@ CREATE TABLE users (
   current_group_id NUMBER REFERENCES interest_groups(id) ON DELETE SET NULL,
   in_room          NUMBER(1) DEFAULT 0 NOT NULL,
   left_group_at    TIMESTAMP WITH TIME ZONE,
+  -- [{ "id": "...", "name": "Exam season", "groupIds": [1, 4] }]
+  bookmarks        JSON DEFAULT JSON('[]') NOT NULL,
   created_at       TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+)
+/
+-- Every community a user has joined. Their node shows in only one (users.current_group_id) at a time.
+CREATE TABLE group_members (
+  user_id    VARCHAR2(36) REFERENCES users(id) ON DELETE CASCADE,
+  group_id   NUMBER REFERENCES interest_groups(id) ON DELETE CASCADE,
+  joined_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+  PRIMARY KEY (user_id, group_id)
 )
 /
 CREATE TABLE user_interests (

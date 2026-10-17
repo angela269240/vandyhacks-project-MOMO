@@ -57,7 +57,7 @@ export function ChatSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full gap-0 p-0 sm:max-w-md" data-scroll-region>
-        <SheetHeader className="border-b border-white/10 p-4">
+        <SheetHeader className="border-b border-foreground/10 p-4">
           <SheetTitle className="flex items-center gap-2 font-heading">
             <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
             {groupName}
@@ -72,12 +72,12 @@ export function ChatSheet({
           {hours.map((h) => (
             <section key={h.hourStart} className="mb-4">
               <div className="my-3 flex items-center gap-3 text-[11px] tracking-wider text-muted-foreground uppercase">
-                <span className="h-px flex-1 bg-white/10" />
+                <span className="h-px flex-1 bg-foreground/10" />
                 {hourLabel(h.hourStart)}
-                <span className="h-px flex-1 bg-white/10" />
+                <span className="h-px flex-1 bg-foreground/10" />
               </div>
               {h.summary && (
-                <details open className="group mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                <details open className="group mb-3 rounded-xl border border-foreground/10 bg-foreground/[0.04] p-3">
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium" style={{ color }}>
                     <Sparkles className="size-3.5" /> While you were away…
                     <ChevronDown className="ml-auto size-3.5 transition group-open:rotate-180" />
@@ -108,7 +108,7 @@ export function ChatSheet({
           <div ref={bottomRef} />
         </div>
 
-        <form onSubmit={send} className="flex gap-2 border-t border-white/10 p-3">
+        <form onSubmit={send} className="flex gap-2 border-t border-foreground/10 p-3">
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}

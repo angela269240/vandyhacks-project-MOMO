@@ -1,4 +1,6 @@
-import type { ChatHour, ChatMessage, FriendState, Graph, Group, Interest, ProfileInput, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, FriendState, Graph, Group, Interest, ProfileInput, User } from "../types";
+
+export type UserPatch = Partial<ProfileInput> & { bookmarks?: Bookmark[] };
 
 export type JoinResult = { group: Group; fromGroupId: number | null };
 
@@ -13,13 +15,14 @@ export interface Store {
   createUser(input: ProfileInput, id: string, deviceKeyHash: string): Promise<User>;
   getUser(id: string): Promise<User | null>;
   getDeviceKeyHash(id: string): Promise<string | null>;
-  updateUser(id: string, patch: Partial<ProfileInput>): Promise<User | null>;
+  updateUser(id: string, patch: UserPatch): Promise<User | null>;
 
   getGraph(now: Date, lingerMs: number): Promise<Graph>;
 
   /** Returns null when the (case-insensitive) name is taken. */
-  createGroup(name: string, color: string, createdBy: string): Promise<Group | null>;
+  createGroup(name: string, color: string, category: string, createdBy: string): Promise<Group | null>;
   getGroupByName(name: string): Promise<Group | null>;
+  /** Makes the group the user's active room and adds it to their memberships. */
   joinGroup(userId: string, groupId: number, now: Date): Promise<JoinResult>;
   /** Marks the user as out of the room; they keep their group for the linger window. Returns false if they weren't in it. */
   leaveRoom(userId: string, groupId: number, now: Date): Promise<boolean>;

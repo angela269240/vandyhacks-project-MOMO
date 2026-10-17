@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import oracledb from "oracledb";
 
-const TABLES = ["friendships", "group_chat_hours", "user_interests", "users", "interest_groups", "interests"];
+const TABLES = ["friendships", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
 
 async function main() {
   const conn = await oracledb.getConnection({

@@ -1,30 +1,24 @@
 "use client";
 
 import { ChevronLeft } from "lucide-react";
-import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
-import { ProfileCard } from "@/components/profile/ProfileCard";
-import { EditProfileSheet } from "@/components/profile/ProfileDialogs";
 import { useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { useConfig, useSseChannel } from "@/hooks/useRealtime";
 import { api, fetcher, loadIdentity } from "@/lib/client/api";
-import { sceneEvents } from "@/lib/client/scene";
-import type { ChatHour, Group, GraphUser, RoomEvent } from "@/lib/types";
+import { scene } from "@/lib/client/scene";
+import type { ChatHour, Group, RoomEvent } from "@/lib/types";
 import { ChatSheet } from "./ChatSheet";
 import { Dock } from "./Dock";
 import { LiveKitMedia, LocalMedia, type Media } from "./media";
-import { RoomStage } from "./RoomStage";
 import { ScreenSharePanel } from "./ScreenSharePanel";
 
 const SCROLL_THRESHOLD = 160; // px of upward scroll to zoom back out to the map
 const HINT_KEY = "sm.hint.scroll";
-const EASE_OUT = [0.22, 1, 0.36, 1] as const;
-const EASE_IN = [0.55, 0, 0.75, 0.3] as const;
-const emptyLevels = { current: new Map<string, number>() };
 
 const groupApi = (name: string, action: string) => `/api/groups/${encodeURIComponent(name)}/${action}`;
 
@@ -65,6 +59,10 @@ function appendChat(hours: ChatHour[], payload: Extract<RoomEvent, { type: "chat
   return hours.map((h) => (h === existing ? { ...h, messages: [...h.messages, message] } : h));
 }
 
+/**
+ * Inside a bubble. The map underneath *is* the room (zoomed in, everyone where they were);
+ * this component only layers the controls on top: header, dock, chat, screen shares, and scroll-out.
+ */
 export function RoomView() {
   const params = useParams<{ name: string }>();
   const name = decodeURIComponent(params.name);
@@ -79,33 +77,21 @@ export function RoomView() {
   const [mediaEnabled, setMediaEnabled] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [unread, setUnread] = useState(0);
-  const [selected, setSelected] = useState<{ user: GraphUser; x: number; y: number } | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [meExiting, setMeExiting] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [hint, setHint] = useState(false);
   const exiting = useRef(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
   const chatOpenRef = useRef(chatOpen);
   useEffect(() => {
     chatOpenRef.current = chatOpen;
   });
 
-  // ---- reveal: the room expands out of the blob the map just zoomed into ----
-  const open = useMotionValue(0);
-  const clipPath = useTransform(open, (v) => `circle(${Math.max(v, 0) * 80}% at 50% 47%)`);
-  const scale = useTransform(open, [0, 1], [0.88, 1]);
+  // Voice levels feed the map so speakers' circles tremble in place.
   useEffect(() => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const controls = animate(open, 1, {
-      duration: reduced ? 0 : 0.7,
-      ease: EASE_OUT,
-      onComplete: () => sceneEvents.emit("map-pause"),
-    });
+    scene.levels = media?.levels.current ?? new Map();
     return () => {
-      controls.stop();
-      sceneEvents.emit("map-resume");
+      scene.levels = new Map();
     };
-  }, [open]);
+  }, [media]);
 
   // ---- join (and leave on unmount, e.g. browser back) ----
   useEffect(() => {
@@ -166,57 +152,42 @@ export function RoomView() {
   );
   useSseChannel<RoomEvent>(joined ? `g-${joined.id}` : null, onRoomEvent);
 
-  // ---- leaving: my circle slides out, edges fade, the room collapses back into the map ----
+  // ---- leaving: you stay in the bubble (as "away"); the view just zooms back out ----
   const exitRoom = useCallback(
-    async (how: "leave" | "scroll" | "esc") => {
+    (how: "leave" | "scroll" | "esc") => {
       if (exiting.current) return;
       exiting.current = true;
-      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setChatOpen(false);
-      setSelected(null);
-      setMeExiting(true);
-      sceneEvents.emit("map-resume");
+      setClosing(true);
       sendLeave(name);
       setMediaEnabled(false);
       if (how === "scroll") swallowWheel(1100);
-      await new Promise((r) => setTimeout(r, reduced ? 0 : how === "scroll" ? 150 : 420));
-      await animate(open, 0, { duration: reduced ? 0 : 0.45, ease: EASE_IN });
-      router.push("/");
+      setTimeout(() => router.push("/"), 220);
     },
-    [name, open, router],
+    [name, router],
   );
 
   // ---- scroll up (or pinch out) to zoom back out to the map: scrubbed, commits past a threshold ----
   useEffect(() => {
-    const el = overlayRef.current;
-    if (!el) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let acc = 0;
     let idle: ReturnType<typeof setTimeout> | undefined;
-    let revealing = false;
     let pinchStart = 0;
+    const inPanel = (t: EventTarget | null) =>
+      Boolean((t as Element | null)?.closest?.('[data-scroll-region],[data-slot="sheet-content"],[data-slot="dialog-content"]'));
 
     const setProgress = (progress: number) => {
-      if (progress > 0 && !revealing) {
-        revealing = true;
-        sceneEvents.emit("map-resume");
-      }
-      if (!reduced) open.set(1 - progress * 0.45);
+      if (!reduced) scene.mapApi?.scrub(progress);
       if (progress >= 1) exitRoom("scroll");
     };
     const springBack = () => {
       acc = 0;
       pinchStart = 0;
-      if (exiting.current) return;
-      animate(open, 1, { type: "spring", stiffness: 320, damping: 30 });
-      if (revealing) {
-        revealing = false;
-        sceneEvents.emit("map-pause");
-      }
+      if (!exiting.current) scene.mapApi?.scrub(0);
     };
 
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as Element | null)?.closest?.("[data-scroll-region]")) return;
+      if (inPanel(e.target)) return;
       e.preventDefault();
       if (exiting.current) return;
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
@@ -232,7 +203,7 @@ export function RoomView() {
 
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) pinchStart = dist(e.touches);
+      if (e.touches.length === 2 && !inPanel(e.target)) pinchStart = dist(e.touches);
     };
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2 || !pinchStart || exiting.current) return;
@@ -243,29 +214,29 @@ export function RoomView() {
       if (e.touches.length < 2 && pinchStart) springBack();
     };
 
-    el.addEventListener("wheel", onWheel, { passive: false });
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
     return () => {
       clearTimeout(idle);
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
     };
-  }, [open, exitRoom]);
+  }, [exitRoom]);
 
-  // Esc zooms back out (unless a sheet or dialog is open; those close first).
+  // Esc zooms back out (unless a sheet, dialog or card is open; those close first).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || document.querySelector('[data-slot="sheet-content"],[data-slot="dialog-content"]')) return;
-      if (selected) setSelected(null);
-      else exitRoom("esc");
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[data-slot="sheet-content"],[data-slot="dialog-content"]')) return;
+      exitRoom("esc");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [exitRoom, selected]);
+  }, [exitRoom]);
 
   // First visit: a gentle "Scroll up to zoom out" hint.
   useEffect(() => {
@@ -281,62 +252,39 @@ export function RoomView() {
     };
   }, []);
 
-  // ---- who's in the room ----
   const groupId = joined?.id ?? null;
   const people = useMemo(() => new Map((graph?.users ?? []).map((u) => [u.id, u])), [graph]);
-  const members = useMemo(() => {
-    if (groupId === null) return [];
-    const list = (graph?.users ?? []).filter((u) => u.groupId === groupId && u.inRoom && u.id !== me?.id);
-    if (me && !meExiting) {
-      const fromGraph = people.get(me.id);
-      list.push({ ...(fromGraph ?? { ...me, away: false }), ...me, groupId, inRoom: true, away: false } as GraphUser);
-    }
-    return list;
-  }, [graph, groupId, me, meExiting, people]);
-
+  const here = (graph?.users ?? []).filter((u) => u.groupId === groupId && u.inRoom).length;
   const color = joined?.color ?? graph?.groups.find((g) => g.name.toLowerCase() === name.toLowerCase())?.color ?? "#22D3EE";
   const meId = identity?.userId ?? null;
 
-  const cardPos = selected
-    ? {
-        x: selected.x + 300 + 40 > window.innerWidth ? Math.max(12, selected.x - 40 - 300) : selected.x + 40,
-        y: Math.max(72, Math.min(selected.y - 120, window.innerHeight - 320)),
-      }
-    : null;
-
   return (
     <motion.div
-      ref={overlayRef}
-      style={{ clipPath, WebkitClipPath: clipPath, scale }}
-      className="fixed inset-0 z-10 touch-none overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,rgba(10,18,48,0.9),rgba(3,5,12,0.94)_70%)] backdrop-blur-[6px]"
-      onClick={() => setSelected(null)}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: closing ? 0 : 1 }}
+      transition={{ duration: 0.25 }}
+      className="pointer-events-none fixed inset-0 z-10"
     >
+      {/* soft vignette so the bubble reads as a room */}
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{ background: `radial-gradient(ellipse at 50% 50%, transparent 45%, var(--room-veil) 100%)` }}
+      />
+
       {mediaEnabled && meId && joined && config?.realtime === "livekit" && config.livekitUrl && lkToken && (
         <LiveKitMedia serverUrl={config.livekitUrl} token={lkToken} meId={meId} onRoomEvent={onRoomEvent} onChange={setMedia} />
       )}
       {mediaEnabled && meId && joined && config?.realtime === "sse" && <LocalMedia meId={meId} onChange={setMedia} />}
 
-      <RoomStage
-        members={members}
-        edges={graph?.edges ?? []}
-        color={color}
-        meId={meId}
-        selectedId={selected?.user.id ?? null}
-        levels={media?.levels ?? emptyLevels}
-        onSelect={(user, p) => setSelected({ user, ...p })}
-      />
-
       <motion.header
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="fixed top-4 left-4 z-20 flex items-center gap-2"
+        className="pointer-events-auto fixed top-4 left-4 z-20 flex items-center gap-2"
       >
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            exitRoom("leave");
-          }}
+          onClick={() => exitRoom("leave")}
           className="glass flex h-10 items-center gap-1 rounded-full pr-4 pl-2.5 text-sm text-foreground/85 transition hover:text-foreground"
         >
           <ChevronLeft className="size-4" /> Map
@@ -344,7 +292,8 @@ export function RoomView() {
         <div className="glass flex h-10 items-center gap-2.5 rounded-full px-4">
           <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
           <span className="max-w-[40vw] truncate font-heading font-semibold">{joined?.name ?? name}</span>
-          <span className="text-xs text-muted-foreground">{members.length} here</span>
+          {joined && <span className="hidden text-xs text-muted-foreground sm:inline">{joined.category}</span>}
+          <span className="text-xs text-muted-foreground">{here} here</span>
         </div>
       </motion.header>
 
@@ -354,20 +303,22 @@ export function RoomView() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="glass pointer-events-none fixed bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full px-4 py-2 text-xs text-foreground/80"
+            className="glass fixed bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full px-4 py-2 text-xs text-foreground/80"
           >
             Scroll up to zoom out
           </motion.div>
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {media?.screens.map((s, i) => (
-          <ScreenSharePanel key={s.id} share={s} index={i} ownerName={people.get(s.ownerId)?.name ?? me?.name ?? "Someone"} />
-        ))}
-      </AnimatePresence>
+      <div className="pointer-events-auto">
+        <AnimatePresence>
+          {media?.screens.map((s, i) => (
+            <ScreenSharePanel key={s.id} share={s} index={i} ownerName={people.get(s.ownerId)?.name ?? me?.name ?? "Someone"} />
+          ))}
+        </AnimatePresence>
+      </div>
 
-      <div onClick={(e) => e.stopPropagation()}>
+      <div className="pointer-events-auto">
         <Dock
           chatOpen={chatOpen}
           unread={unread}
@@ -383,22 +334,6 @@ export function RoomView() {
         />
       </div>
 
-      <AnimatePresence>
-        {selected && cardPos && (
-          <ProfileCard
-            key={selected.user.id}
-            user={people.get(selected.user.id) ?? selected.user}
-            groupName={joined?.name}
-            style={{ transform: `translate3d(${cardPos.x}px, ${cardPos.y}px, 0)` }}
-            onClose={() => setSelected(null)}
-            onEditProfile={() => {
-              setSelected(null);
-              setEditOpen(true);
-            }}
-          />
-        )}
-      </AnimatePresence>
-
       {joined && (
         <ChatSheet
           open={chatOpen}
@@ -412,7 +347,6 @@ export function RoomView() {
           color={color}
         />
       )}
-      <EditProfileSheet open={editOpen} onOpenChange={setEditOpen} />
     </motion.div>
   );
 }

@@ -18,9 +18,12 @@ export function buildGraph(
     if (u.currentGroupId !== null && u.inRoom) active.set(u.currentGroupId, (active.get(u.currentGroupId) ?? 0) + 1);
   }
 
+  const members = new Map<number, number>();
+  for (const u of users) for (const gid of u.memberOf) members.set(gid, (members.get(gid) ?? 0) + 1);
+
   const visibleGroups = groups
     .filter((g) => (active.get(g.id) ?? 0) > 0 || (g.lastExitAt ? new Date(g.lastExitAt).getTime() > cutoff : true))
-    .map((g) => ({ ...g, activeCount: active.get(g.id) ?? 0 }));
+    .map((g) => ({ ...g, activeCount: active.get(g.id) ?? 0, memberCount: members.get(g.id) ?? 0 }));
   const visibleIds = new Set(visibleGroups.map((g) => g.id));
 
   const graphUsers = users.map((u) => {
@@ -33,6 +36,7 @@ export function buildGraph(
       bio: u.bio,
       avatarUrl: u.avatarUrl,
       interestIds: u.interestIds,
+      memberOf: u.memberOf.filter((id) => visibleIds.has(id)),
       groupId: placed ? u.currentGroupId : null,
       inRoom: placed && u.inRoom,
       away: placed && !u.inRoom,

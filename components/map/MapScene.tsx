@@ -1,23 +1,30 @@
 "use client";
 
-import { Plus, UserRound } from "lucide-react";
+import { Bookmark, Plus, UserRound } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useSWRConfig } from "swr";
+import { AddToBookmark } from "@/components/bookmarks/AddToBookmark";
+import { BookmarksPane } from "@/components/bookmarks/BookmarksPane";
 import { RequestsBell } from "@/components/friends/RequestsBell";
 import { NewGroupDialog } from "@/components/groups/NewGroupDialog";
 import { Avatar } from "@/components/profile/Avatar";
 import { CreateProfileDialog, EditProfileSheet } from "@/components/profile/ProfileDialogs";
 import { ProfileCard } from "@/components/profile/ProfileCard";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Button } from "@/components/ui/button";
 import { GRAPH_KEY, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
-import { roomPath } from "@/lib/client/api";
-import { scene, sceneEvents } from "@/lib/client/scene";
+import { api, roomPath } from "@/lib/client/api";
+import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
+import { scene } from "@/lib/client/scene";
 import { INTERESTS } from "@/lib/interests";
-import type { GraphGroup, GraphUser } from "@/lib/types";
-import { useSWRConfig } from "swr";
+import type { Group, GraphGroup, GraphUser } from "@/lib/types";
+import { DegreesSlider } from "./DegreesSlider";
+import { FilterBar } from "./FilterBar";
 import type { MapApi } from "./SocialGraph";
 
 const SocialGraph = dynamic(() => import("./SocialGraph"), { ssr: false });
@@ -25,8 +32,8 @@ const SocialGraph = dynamic(() => import("./SocialGraph"), { ssr: false });
 const roomNameFrom = (path: string) => (path.startsWith("/g/") ? decodeURIComponent(path.slice(3)) : null);
 
 /**
- * The home map. Mounted once in the (map) layout and kept alive under the room overlay,
- * so the simulation and camera survive zooming into a group and back out.
+ * The home map. Mounted once in the (map) layout and kept alive under the room controls:
+ * zooming into a bubble *is* the room, so positions and edges stay exactly where they were.
  */
 export function MapScene() {
   const router = useRouter();
@@ -42,9 +49,41 @@ export function MapScene() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [addTo, setAddTo] = useState<{ group: GraphGroup; at: { x: number; y: number } } | null>(null);
+  const [chipStates, setChipStates] = useState<Record<string, ChipState>>({});
+  const [query, setQuery] = useState("");
+  const [degrees, setDegrees] = useState(Infinity);
   const entering = useRef(false);
   const prevRoom = useRef<string | null>(roomName);
   const didInitialFit = useRef(false);
+
+  const meId = identity?.userId ?? null;
+  const myNode = graph?.users.find((u) => u.id === meId);
+  const myGroupId = myNode?.groupId ?? null;
+  const roomGroup = roomName ? graph?.groups.find((g) => g.name.toLowerCase() === roomName.toLowerCase()) : undefined;
+  const roomGroupId = roomGroup?.id ?? null;
+  const bookmarks = useMemo(() => me?.bookmarks ?? [], [me]);
+  const chips = useMemo(() => buildChips(bookmarks), [bookmarks]);
+
+  // ---- who and what is in focus ----
+  const visibleUserIds = useMemo(
+    () => (graph && meId ? withinDegrees(meId, graph.edges, degrees) : null),
+    [graph, meId, degrees],
+  );
+  const focusedGroupIds = useMemo(() => {
+    const out = new Set<number>();
+    for (const g of graph?.groups ?? []) {
+      if (!passesChips(g, chips, chipStates) || !passesSearch(g, query, bookmarks, graph!.users)) continue;
+      if (visibleUserIds && g.id !== myGroupId) {
+        const hasVisible = graph!.users.some((u) => u.groupId === g.id && visibleUserIds.has(u.id));
+        if (!hasVisible) continue;
+      }
+      out.add(g.id);
+    }
+    if (roomGroupId !== null) out.add(roomGroupId);
+    return out;
+  }, [graph, chips, chipStates, query, bookmarks, visibleUserIds, myGroupId, roomGroupId]);
 
   // First visit: invite people to make a profile (the map stays visible behind it).
   useEffect(() => {
@@ -52,47 +91,42 @@ export function MapScene() {
     if (ready && !identity && !roomName) setCreateOpen(true);
   }, [ready, identity, roomName]);
 
-  useEffect(() => {
-    const offPause = sceneEvents.on("map-pause", () => apiRef.current?.pause());
-    const offResume = sceneEvents.on("map-resume", () => apiRef.current?.resume());
-    return () => {
-      offPause();
-      offResume();
-    };
-  }, []);
-
   const onReady = useCallback((api: MapApi) => {
     apiRef.current = api;
+    scene.mapApi = api;
   }, []);
 
-  // Initial camera: fit the whole map, or jump straight onto the group on a direct /g/... load.
+  // Initial camera: fit the focused bubbles (yours in the middle), or jump onto the room on a direct /g/... load.
   useEffect(() => {
     if (!graph || didInitialFit.current) return;
     didInitialFit.current = true;
-    const timer = setTimeout(() => {
+    const fit = (ms: number) => {
       const api = apiRef.current;
       if (!api) return;
-      const g = roomName ? graph.groups.find((x) => x.name.toLowerCase() === roomName.toLowerCase()) : null;
-      if (g) {
-        api.focusGroup(g.id);
-        api.zoomToGroup(g.id, 0);
-      } else api.fitAll(900);
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [graph, roomName]);
+      if (roomGroupId !== null) api.zoomToGroup(roomGroupId, ms);
+      else api.fitFocused(ms);
+    };
+    // once quickly, then again after the bubbles have settled into their spots
+    const timers = [setTimeout(() => fit(0), 600), setTimeout(() => fit(900), 2400)];
+    return () => timers.forEach(clearTimeout);
+  }, [graph, roomGroupId]);
 
-  // Coming back out of a room (Leave, scroll up, Esc, or browser back): restore the camera.
+  // Refit when the focus set changes (filters, bookmarks, degrees), once the layout has had a moment to move.
+  const focusKey = [...focusedGroupIds].sort((a, b) => a - b).join(",");
+  useEffect(() => {
+    if (!didInitialFit.current || roomName) return;
+    const t = setTimeout(() => apiRef.current?.fitFocused(800), 700);
+    return () => clearTimeout(t);
+  }, [focusKey, roomName]);
+
+  // Coming back out of a room: your node stays put in its bubble; the view just zooms back out.
   useEffect(() => {
     const was = prevRoom.current;
     prevRoom.current = roomName;
     if (was && !roomName) {
       entering.current = false;
-      const api = apiRef.current;
-      api?.resume();
-      api?.focusGroup(null);
-      if (scene.cameraBeforeRoom) api?.setCamera(scene.cameraBeforeRoom, 800);
-      else api?.fitAll(800);
-      scene.cameraBeforeRoom = null;
+      apiRef.current?.focusGroup(null);
+      setTimeout(() => apiRef.current?.fitFocused(900), 150);
       mutate(GRAPH_KEY);
     }
   }, [roomName, mutate]);
@@ -102,17 +136,29 @@ export function MapScene() {
     if (entering.current) return;
     entering.current = true;
     setSelectedId(null);
+    setAddTo(null);
     const api = apiRef.current;
     if (api) {
       scene.cameraBeforeRoom = api.getCamera();
       api.focusGroup(group.id);
       api.zoomToGroup(group.id, 600);
     }
-    setTimeout(() => router.push(roomPath(group.name)), 600);
+    setTimeout(() => router.push(roomPath(group.name)), 450);
+  };
+
+  const dropOnGroup = async (group: GraphGroup) => {
+    if (!identity) return setCreateOpen(true);
+    try {
+      await api<Group>(`/api/groups/${encodeURIComponent(group.name)}/join`, { method: "POST" });
+      await mutate(GRAPH_KEY);
+      toast.success(`You joined ${group.name}`, { description: "Click the bubble to step inside." });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const selected = selectedId ? graph?.users.find((u) => u.id === selectedId) : undefined;
-  const groupName = (id: number | null) => graph?.groups.find((g) => g.id === id)?.name ?? null;
+  const groupById = (id: number | null) => graph?.groups.find((g) => g.id === id) ?? null;
   const onMap = !roomName;
 
   return (
@@ -121,25 +167,27 @@ export function MapScene() {
         {graph && (
           <SocialGraph
             graph={graph}
-            meId={identity?.userId ?? null}
+            meId={meId}
+            myGroupId={myGroupId}
             friendIds={friends.friends}
-            selectedId={onMap ? (selectedId ?? null) : null}
+            selectedId={selectedId}
+            focusedGroupIds={focusedGroupIds}
+            visibleUserIds={visibleUserIds}
+            roomGroupId={roomGroupId}
             cardRef={cardRef}
             onReady={onReady}
             onNodeClick={(u: GraphUser) => setSelectedId((cur) => (cur === u.id ? null : u.id))}
-            onGroupClick={(g: GraphGroup) => enterGroup(g)}
+            onGroupClick={(g) => enterGroup(g)}
+            onGroupDoubleClick={(g, at) => (me ? setAddTo({ group: g, at }) : setCreateOpen(true))}
             onBackgroundClick={() => setSelectedId(null)}
+            onDropOnGroup={dropOnGroup}
           />
         )}
       </div>
 
       <AnimatePresence>
         {isLoading && !graph && (
-          <motion.div
-            key="loading"
-            exit={{ opacity: 0 }}
-            className="pointer-events-none fixed inset-0 flex items-center justify-center"
-          >
+          <motion.div key="loading" exit={{ opacity: 0 }} className="pointer-events-none fixed inset-0 flex items-center justify-center">
             <div className="animate-pulse font-heading text-sm tracking-[0.3em] text-muted-foreground uppercase">
               Mapping the room…
             </div>
@@ -155,65 +203,82 @@ export function MapScene() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.25 }}
-            className="pointer-events-none fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-3 p-4"
+            className="pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-col items-center gap-2.5 p-3 sm:p-4"
           >
-            <div className="pointer-events-auto flex items-center gap-2.5">
-              <span className="size-3 rounded-full bg-[#22D3EE] shadow-[0_0_14px_#22D3EE]" aria-hidden />
-              <h1 className="font-heading text-lg font-semibold tracking-tight">Social Mapper</h1>
+            <div className="flex w-full items-center justify-between gap-3">
+              <div className="pointer-events-auto flex items-center gap-2">
+                <button
+                  onClick={() => setBookmarksOpen((o) => !o)}
+                  aria-label="Bookmarks"
+                  aria-expanded={bookmarksOpen}
+                  className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"
+                >
+                  <Bookmark className="size-[18px]" />
+                </button>
+                <span className="size-2.5 rounded-full bg-[#22D3EE] shadow-[0_0_14px_#22D3EE]" aria-hidden />
+                <h1 className="font-heading text-lg font-semibold tracking-tight">Social Mapper</h1>
+              </div>
+              <div className="pointer-events-auto flex items-center gap-2">
+                {me ? (
+                  <>
+                    <Button
+                      className="glass h-9 rounded-full px-3.5 text-foreground hover:bg-foreground/10"
+                      variant="ghost"
+                      onClick={() => setNewGroupOpen(true)}
+                    >
+                      <Plus /> <span className="hidden sm:inline">New group</span>
+                    </Button>
+                    <RequestsBell />
+                    <button
+                      onClick={() => setEditOpen(true)}
+                      aria-label="Your profile"
+                      className="rounded-full focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      <Avatar
+                        name={me.name}
+                        url={me.avatarUrl}
+                        color={INTERESTS.find((i) => i.id === me.interestIds[0])?.color ?? "#60A5FA"}
+                        size={36}
+                      />
+                    </button>
+                  </>
+                ) : (
+                  ready && (
+                    <Button className="h-9 rounded-full px-4" onClick={() => setCreateOpen(true)}>
+                      <UserRound /> Create profile
+                    </Button>
+                  )
+                )}
+                <ThemeSwitch />
+              </div>
             </div>
-            <div className="pointer-events-auto flex items-center gap-2">
-              {me ? (
-                <>
-                  <Button className="glass h-9 rounded-full px-3.5 text-foreground hover:bg-white/10" variant="ghost" onClick={() => setNewGroupOpen(true)}>
-                    <Plus /> <span className="hidden sm:inline">New group</span>
-                  </Button>
-                  <RequestsBell />
-                  <button
-                    onClick={() => setEditOpen(true)}
-                    aria-label="Your profile"
-                    className="rounded-full focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                  >
-                    <Avatar
-                      name={me.name}
-                      url={me.avatarUrl}
-                      color={INTERESTS.find((i) => i.id === me.interestIds[0])?.color ?? "#60A5FA"}
-                      size={36}
-                    />
-                  </button>
-                </>
-              ) : (
-                ready && (
-                  <Button className="h-9 rounded-full px-4" onClick={() => setCreateOpen(true)}>
-                    <UserRound /> Create profile
-                  </Button>
-                )
-              )}
-            </div>
+            <FilterBar chips={chips} states={chipStates} onStates={setChipStates} query={query} onQuery={setQuery} />
           </motion.header>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {onMap && graph && (
-          <motion.p
-            key="hint"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pointer-events-none fixed inset-x-0 bottom-5 z-10 text-center text-xs tracking-wide text-muted-foreground"
+          <motion.div
+            key="degrees"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="pointer-events-none fixed inset-x-0 bottom-4 z-20 flex justify-center"
           >
-            Scroll to zoom · drag to pan · click a person to meet them · click a group to step inside
-          </motion.p>
+            <DegreesSlider value={degrees} onChange={setDegrees} disabled={!meId} />
+          </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {onMap && selected && (
+        {selected && (
           <ProfileCard
             key={selected.id}
             ref={cardRef}
             user={selected}
-            groupName={groupName(selected.groupId)}
+            groupName={groupById(selected.groupId)?.name ?? null}
+            communities={selected.memberOf.map((id) => groupById(id)).filter((g): g is GraphGroup => Boolean(g))}
             onClose={() => setSelectedId(null)}
             onEditProfile={() => {
               setSelectedId(null);
@@ -222,6 +287,16 @@ export function MapScene() {
           />
         )}
       </AnimatePresence>
+
+      <BookmarksPane
+        open={bookmarksOpen && onMap}
+        onClose={() => setBookmarksOpen(false)}
+        groups={graph?.groups ?? []}
+        onApply={(id) =>
+          setChipStates(Object.fromEntries(chips.map((c) => [c.key, c.key === `bookmark:${id}` ? "on" : "none"])))
+        }
+      />
+      {addTo && <AddToBookmark group={addTo.group} at={addTo.at} onClose={() => setAddTo(null)} />}
 
       <CreateProfileDialog open={createOpen} onOpenChange={setCreateOpen} />
       <EditProfileSheet open={editOpen} onOpenChange={setEditOpen} />
