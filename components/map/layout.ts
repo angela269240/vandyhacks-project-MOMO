@@ -7,7 +7,6 @@ import { hashString } from "@/lib/colors";
  */
 
 const SPACING = 340;
-const STRIP_GAP = 220;
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 export type Pt2 = { x: number; y: number };
@@ -25,22 +24,59 @@ export type Layout = {
   centerOnMe: boolean;
 };
 
-export function computeLayout(focused: number[], unfocused: number[], myGroupId: number | null): Layout {
+/** Rough on-screen radius of a bubble with n people (world units). */
+export const clusterRadius = (n: number, scale = 1) => (50 + 30 * Math.sqrt(Math.max(n, 1))) * scale;
+
+/**
+ * Places bubbles along a golden-angle spiral, pushing each one outward until it clears every bubble
+ * already placed, so a 40-person bubble gets the room it needs without spreading out the small ones.
+ */
+export function computeLayout(
+  focused: number[],
+  unfocused: number[],
+  myGroupId: number | null,
+  sizes: Map<number, number> = new Map(),
+  unfocusedScale = 0.55,
+): Layout {
   const anchors = new Map<number, Pt2>();
+  const placed: { p: Pt2; r: number }[] = [];
+  const GAP = 140; // leaves room for the two label lines above each bubble
+  const clear = (p: Pt2, r: number) => placed.every((o) => Math.hypot(p.x - o.p.x, p.y - o.p.y) >= r + o.r + GAP);
+
   const ordered = [...focused].sort((a, b) => a - b);
   const mineFocused = myGroupId !== null && ordered.includes(myGroupId);
   if (mineFocused) ordered.splice(ordered.indexOf(myGroupId), 1);
-  // Slot 0 (the center) is my bubble, or me on my own; everyone else spirals out from slot 1.
+  // Slot 0 (the center) is my bubble, or me on my own; everyone else spirals out around it.
+  const centerR = mineFocused ? clusterRadius(sizes.get(myGroupId) ?? 1) : 40;
   if (mineFocused) anchors.set(myGroupId, { x: 0, y: 0 });
-  ordered.forEach((id, i) => anchors.set(id, spiral(i + 1)));
-  const slots = ordered.length + 1;
-  const focusRadius = SPACING * Math.sqrt(Math.max(slots - 1, 1));
-  const ringRadius = focusRadius + 200;
+  placed.push({ p: { x: 0, y: 0 }, r: centerR });
 
-  const stripX = ringRadius + 360;
+  ordered.forEach((id, i) => {
+    const r = clusterRadius(sizes.get(id) ?? 1);
+    const angle = (i + 1) * GOLDEN;
+    let dist = centerR + r + GAP;
+    let p = { x: dist * Math.cos(angle), y: dist * Math.sin(angle) };
+    while (!clear(p, r)) {
+      dist += 20;
+      p = { x: dist * Math.cos(angle), y: dist * Math.sin(angle) };
+    }
+    anchors.set(id, p);
+    placed.push({ p, r });
+  });
+
+  const extent = Math.max(...placed.map((o) => Math.hypot(o.p.x, o.p.y) + o.r));
+  const ringRadius = extent + 160;
+
+  // Unfocused bubbles line up in a strip to the right, off-screen until you pan sideways.
+  let x = ringRadius + 360;
   [...unfocused]
     .sort((a, b) => a - b)
-    .forEach((id, i) => anchors.set(id, { x: stripX + i * STRIP_GAP, y: (i % 2 ? 1 : -1) * 40 }));
+    .forEach((id, i) => {
+      const r = clusterRadius(sizes.get(id) ?? 1, unfocusedScale);
+      x += r;
+      anchors.set(id, { x, y: (i % 2 ? 1 : -1) * 40 });
+      x += r + 60;
+    });
 
   return { anchors, ringRadius, centerOnMe: !mineFocused };
 }

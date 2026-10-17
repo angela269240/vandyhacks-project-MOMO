@@ -221,12 +221,15 @@ export default function SocialGraph(props: Props) {
 
   // ---- layout: focused bubbles in the middle (mine at the center), the rest in a side strip ----
   const focusKey = [...props.focusedGroupIds].sort((a, b) => a - b).join(",");
-  const groupKey = props.graph.groups.map((g) => g.id).join(",");
+  // group ids plus head counts, so the layout makes room when a bubble grows
+  const groupKey = props.graph.groups.map((g) => `${g.id}:${props.graph.users.filter((u) => u.groupId === g.id).length}`).join(",");
   useEffect(() => {
     const ids = props.graph.groups.map((g) => g.id);
     const focused = ids.filter((id) => props.focusedGroupIds.has(id));
     const unfocused = ids.filter((id) => !props.focusedGroupIds.has(id));
-    layout.current = computeLayout(focused, unfocused, props.myGroupId);
+    const sizes = new Map<number, number>();
+    for (const u of props.graph.users) if (u.groupId !== null) sizes.set(u.groupId, (sizes.get(u.groupId) ?? 0) + 1);
+    layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE);
     applyCollide();
     fgRef.current?.d3ReheatSimulation();
   }, [focusKey, groupKey, props.myGroupId, props.meId, applyCollide]); // eslint-disable-line react-hooks/exhaustive-deps
