@@ -37,7 +37,7 @@
 | Graph | **`react-force-graph-2d`** (canvas + d3-force + d3-zoom) | Custom `nodeCanvasObject`, `linkCanvasObject`, `onRenderFramePre` for group blobs. Use `autoPauseRedraw={false}` so nodes can bob continuously. |
 | Geometry | `d3-polygon` (`polygonHull`), `d3-shape` (`line` + `curveCatmullRomClosed`) | Smooth blob outlines around group members. |
 | Motion | `motion` (Framer Motion) | Page transitions, profile card, dock, room-view node animations. |
-| Background | `@tsparticles/react` + `@tsparticles/slim` | Floating neon lights with blur and glow. Cap at about 40 particles and respect `prefers-reduced-motion`. |
+| Background | Custom canvas (`components/ambient/NeonParticles.tsx`) | Floating neon lights with blur and glow. Cap at about 40 particles and respect `prefers-reduced-motion`. tsParticles v4 dropped the glow options this needed, so a small sprite-based canvas replaces it. |
 | Realtime | `@livekit/components-react`, `livekit-client`, `livekit-server-sdk` | Tokens, RoomServiceClient.sendData, webhooks. |
 | Data fetching | `swr` | `/api/graph` with revalidation triggered by lobby events. Fallback poll every 10s. |
 | DB | `oracledb` (Thin mode) | Small pool per function instance (`poolMax: 4`). |
@@ -256,7 +256,7 @@ Back (**scroll up**, Esc, browser back or Leave): play the reverse. The room col
 - **Hourly cron:**
   - For groups with `last_exit_at < now - 24h` and no active members, write all `group_chat_hours` as JSON to Object Storage `chat-archive/<group>/<date>.json`, delete the group, and broadcast `group_expired`. The blob fades out on clients.
   - For every completed hour bucket with ≥5 messages and no summary, call OCI GenAI and save a 1–2 sentence `summary`.
-- Demo affordance: `?fastClock=1` (dev only) shrinks 24h to 2 minutes so expiry can be shown live.
+- Demo affordance: the `FAST_CLOCK=1` env var shrinks 24h to 2 minutes so expiry can be shown live.
 
 ### 5.5 Create / edit profile
 - Dialog on first visit, Sheet for editing. Built from shadcn `Form` + `zod`.
@@ -331,8 +331,8 @@ Zoom-in transition, RoomStage, Dock, voice with trembling, screen share panel, c
 ✅ Two people talk and the speaker's circle trembles. Screen share shows up. Chat persists across reloads in hourly buckets. Scrolling up in a room scrubs back out to the map, while scrolling inside the chat panel does not.
 
 **Phase 7 — Lifecycle and OCI extras**
-Cron route (GenAI summaries + expiry + archive), avatar upload via PAR, `fastClock` demo mode.
-✅ Recap cards show up in chat. With `fastClock`, an emptied group fades from the map and its archive JSON appears in the bucket.
+Cron route (GenAI summaries + expiry + archive), avatar upload via PAR, `FAST_CLOCK` demo mode.
+✅ Recap cards show up in chat. With `FAST_CLOCK=1`, an emptied group fades from the map and its archive JSON appears in the bucket.
 
 **Phase 8 — Polish**
 Reduced-motion handling, empty states, toasts, loading shimmer on the map, mobile check (map pinch-zoom works, dock fits at 375px), favicon and OG image.
@@ -346,7 +346,7 @@ Reduced-motion handling, empty states, toasts, loading shimmer on the map, mobil
 4. Click "CS3251 Exam Cram". Zoom in and the room reveals itself. Read the GenAI recap in chat.
 5. Turn on voice and talk: your circle trembles. Share screen.
 6. Scroll up to zoom back out: your circle slides out and the edges fade. Back on the map you're dimmed in that group.
-7. Use `fastClock` to show an empty group expiring and archived to OCI Object Storage.
+7. Use `FAST_CLOCK=1` to show an empty group expiring and archived to OCI Object Storage.
 
 ---
 
