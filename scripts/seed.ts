@@ -42,8 +42,14 @@ async function main() {
     const groupIds: number[] = [];
     for (const g of world.groups) {
       const res = await conn.execute(
-        `INSERT INTO interest_groups (name, color, created_by) VALUES (:name, :color, :by) RETURNING id INTO :id`,
-        { name: g.name, color: g.color, by: world.users[g.createdByIndex].id, id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
+        `INSERT INTO interest_groups (name, color, category, created_by) VALUES (:name, :color, :category, :by) RETURNING id INTO :id`,
+        {
+          name: g.name,
+          color: g.color,
+          category: g.category,
+          by: world.users[g.createdByIndex].id,
+          id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+        },
       );
       groupIds.push((res.outBinds as { id: number[] }).id[0]);
     }
@@ -60,6 +66,11 @@ async function main() {
         },
       );
     }
+
+    await conn.executeMany(
+      `INSERT INTO group_members (user_id, group_id) VALUES (:u, :g)`,
+      world.users.flatMap((u) => u.memberOf.map((i) => ({ u: u.id, g: groupIds[i] }))),
+    );
 
     await conn.executeMany(
       `INSERT INTO friendships (user_a, user_b, requested_by, status) VALUES (:a, :b, :by, :status)`,

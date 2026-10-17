@@ -87,6 +87,36 @@
   --sidebar-accent-foreground: #e6ecff;
   --sidebar-border: rgba(120, 150, 255, 0.14);
   --sidebar-ring: rgba(34, 211, 238, 0.6);
+  --room-veil: rgba(3, 5, 12, 0.72);
+}
+
+/* White mode (toggled from the upper-right switch) */
+html.light {
+  --bg-0: #e8ecf7;
+  --bg-1: #ffffff;
+  --surface: rgba(255, 255, 255, 0.68);
+  --text-dim: #5a6386;
+
+  --background: #f3f5fb;
+  --foreground: #0b1230;
+  --card: rgba(255, 255, 255, 0.75);
+  --card-foreground: #0b1230;
+  --popover: rgba(255, 255, 255, 0.92);
+  --popover-foreground: #0b1230;
+  --primary: #0891b2;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(20, 30, 80, 0.06);
+  --secondary-foreground: #0b1230;
+  --muted: rgba(20, 30, 80, 0.05);
+  --muted-foreground: #5a6386;
+  --accent: rgba(20, 30, 80, 0.07);
+  --accent-foreground: #0b1230;
+  --destructive: #e11d48;
+  --border: rgba(20, 30, 80, 0.12);
+  --input: rgba(20, 30, 80, 0.16);
+  --ring: rgba(8, 145, 178, 0.5);
+  --room-veil: rgba(232, 236, 247, 0.85);
+  color-scheme: light;
 }
 
 @layer base {
@@ -130,6 +160,10 @@ body {
 [data-slot="sheet-overlay"] {
   background: rgba(2, 4, 12, 0.55);
 }
+html.light [data-slot="dialog-overlay"],
+html.light [data-slot="sheet-overlay"] {
+  background: rgba(200, 208, 230, 0.45);
+}
 
 @keyframes aura-drift {
   0% { transform: translate3d(0, 0, 0) scale(1); }
@@ -152,7 +186,7 @@ body {
 
 .tag-glow {
   border-color: var(--glow) !important;
-  color: #fff !important;
+  color: var(--foreground) !important;
   animation: tag-pulse 2.4s ease-in-out infinite;
 }
 
@@ -163,4 +197,8 @@ body {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+html.light {
+  --aura-opacity: 0.16;
 }

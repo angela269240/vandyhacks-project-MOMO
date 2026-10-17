@@ -36,12 +36,12 @@ const BIOS = [
 ];
 
 export const SEED_GROUPS = [
-  { name: "CS3251 Exam Cram", interests: ["CS3251", "Hackathons", "Game Dev"] },
-  { name: "Badminton Sunday", interests: ["Badminton", "Running", "Rock Climbing"] },
-  { name: "Baby Bio Study Hall", interests: ["Baby Bio", "Pre-Med", "Cooking"] },
-  { name: "Startup Ideas", interests: ["Startups", "Hackathons", "Debate"] },
-  { name: "ML Paper Club", interests: ["Machine Learning", "Linear Algebra", "Robotics"] },
-  { name: "Late Night Chess", interests: ["Chess", "Philosophy", "Jazz"] },
+  { name: "CS3251 Exam Cram", category: "Academics", interests: ["CS3251", "Hackathons", "Game Dev"] },
+  { name: "Badminton Sunday", category: "Sports & Fitness", interests: ["Badminton", "Running", "Rock Climbing"] },
+  { name: "Baby Bio Study Hall", category: "Health & Pre-Med", interests: ["Baby Bio", "Pre-Med", "Cooking"] },
+  { name: "Startup Ideas", category: "Career & Startups", interests: ["Startups", "Hackathons", "Debate"] },
+  { name: "ML Paper Club", category: "Tech", interests: ["Machine Learning", "Linear Algebra", "Robotics"] },
+  { name: "Late Night Chess", category: "Games", interests: ["Chess", "Philosophy", "Jazz"] },
 ];
 
 export type SeedUser = {
@@ -51,6 +51,8 @@ export type SeedUser = {
   bio: string;
   interestIds: number[];
   groupIndex: number | null;
+  /** all communities joined (includes groupIndex) */
+  memberOf: number[];
   inRoom: boolean;
   /** minutes ago they left the room, when not in it */
   leftMinutesAgo: number | null;
@@ -58,7 +60,7 @@ export type SeedUser = {
 
 export type SeedWorld = {
   users: SeedUser[];
-  groups: { name: string; color: string; createdByIndex: number }[];
+  groups: { name: string; color: string; category: string; createdByIndex: number }[];
   friendships: { a: string; b: string; status: "accepted" | "pending"; requestedBy: string }[];
   chats: { groupIndex: number; hourStart: string; messages: ChatMessage[]; summary: string | null }[];
 };
@@ -78,6 +80,8 @@ export function buildSeedWorld(now = new Date()): SeedWorld {
     const target = 3 + Math.floor(r() * 4);
     while (picked.size < target) picked.add(1 + Math.floor(r() * INTERESTS.length));
     const away = groupIndex !== null && r() < 0.15;
+    const memberOf = new Set<number>(groupIndex === null ? [] : [groupIndex]);
+    if (r() < 0.45) memberOf.add(Math.floor(r() * SEED_GROUPS.length)); // some people belong to a second community
     return {
       id: idFor(i),
       name,
@@ -85,12 +89,13 @@ export function buildSeedWorld(now = new Date()): SeedWorld {
       bio: pick(BIOS),
       interestIds: [...picked],
       groupIndex,
+      memberOf: [...memberOf],
       inRoom: groupIndex !== null && !away,
       leftMinutesAgo: away ? 30 + Math.floor(r() * 300) : null,
     };
   });
 
-  const groups = SEED_GROUPS.map((g, i) => ({ name: g.name, color: colorForName(g.name), createdByIndex: i }));
+  const groups = SEED_GROUPS.map((g, i) => ({ name: g.name, color: colorForName(g.name), category: g.category, createdByIndex: i }));
 
   const friendships: SeedWorld["friendships"] = [];
   const seen = new Set<string>();

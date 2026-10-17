@@ -48,7 +48,7 @@ export function RequestsBell() {
         ) : (
           <ul className="flex flex-col gap-2">
             {incoming.map((u) => (
-              <li key={u.id} className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-white/5">
+              <li key={u.id} className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-foreground/5">
                 <Avatar
                   name={u.name}
                   url={u.avatarUrl}

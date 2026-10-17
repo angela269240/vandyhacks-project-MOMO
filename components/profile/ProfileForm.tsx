@@ -159,7 +159,7 @@ export function ProfileForm({
                 disabled={!on && tags.length >= MAX_TAGS}
                 className={cn(
                   "rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-40",
-                  on ? "tag-glow" : "border-white/15 text-muted-foreground hover:border-white/30 hover:text-foreground",
+                  on ? "tag-glow" : "border-foreground/15 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
                 )}
                 style={{ "--glow": i.color } as React.CSSProperties}
               >

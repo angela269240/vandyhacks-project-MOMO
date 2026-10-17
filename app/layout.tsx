@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import { Ambient } from "@/components/ambient/Ambient";
 import { Providers } from "@/components/Providers";
+import { themeBootScript } from "@/hooks/useTheme";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
@@ -19,7 +20,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${grotesk.variable} antialiased`}>
+    <html lang="en" className={`dark ${inter.variable} ${grotesk.variable} antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body>
         <Ambient />
         <Providers>{children}</Providers>

@@ -12,6 +12,8 @@ type MeContext = {
   me: User | null;
   setIdentity: (identity: Identity | null) => void;
   refreshMe: () => Promise<unknown>;
+  /** optimistic local update of my profile (e.g. bookmarks) */
+  setMe: (user: User) => void;
   friends: FriendState;
   refreshFriends: () => Promise<unknown>;
 };
@@ -51,6 +53,7 @@ export function MeProvider({ children }: { children: React.ReactNode }) {
       me: identity ? (meQuery.data ?? null) : null,
       setIdentity,
       refreshMe: () => meQuery.mutate(),
+      setMe: (user: User) => void meQuery.mutate(user, { revalidate: false }),
       friends: friendsQuery.data ?? EMPTY_FRIENDS,
       refreshFriends: () => friendsQuery.mutate(),
     }),

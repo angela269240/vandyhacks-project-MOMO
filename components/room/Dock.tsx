@@ -38,7 +38,7 @@ export function Dock({
     { label: "Text chat", icon: <MessageSquare />, active: chatOpen, badge: unread, onClick: onChat },
     { label: micOn ? "Mute" : "Voice chat", icon: micOn ? <Mic /> : <MicOff />, active: micOn, onClick: onMic },
     { label: screenOn ? "Stop sharing" : "Share screen", icon: <MonitorUp />, active: screenOn, onClick: onScreen },
-    { label: "Leave group", icon: <LogOut />, tone: "danger", onClick: onLeave },
+    { label: "Leave room", icon: <LogOut />, tone: "danger", onClick: onLeave },
   ];
 
   return (
