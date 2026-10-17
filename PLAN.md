@@ -378,6 +378,5 @@ Reduced-motion handling, empty states, toasts, loading shimmer on the map, mobil
 | Degrees slider | A bottom bar reading "SHOW N DEGREES OF CONNECTION" (1–5 or ∞), measured from you. People further away are hidden. |
 | Many communities | A new `group_members` table records every community someone joins. Their node appears in only one active room (`users.current_group_id`). Memberships stay when they leave and are listed on the profile card. |
 | White mode | A switch at the upper right sets light or dark CSS tokens. The choice is saved in localStorage and applied before paint. Canvas colors and ambient lights adapt too. |
-| Cumulative notes document | Deferred (WIP). |
 
 Schema changes: `interest_groups.category`, `users.bookmarks`, and a new `group_members` table. Run `npm run db:migrate -- --reset` and then `npm run db:seed` on an existing database.
