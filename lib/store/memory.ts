@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { INTERESTS } from "../interests";
 import { buildSeedWorld } from "../seed-data";
+import { dmCutoff, dmKey, pruneDm } from "../dm";
 import { joinNotes, notesExpiry } from "../notes";
 import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, ProfileInput, Report, User } from "../types";
 import { buildGraph } from "./graph";
@@ -18,6 +19,8 @@ type State = {
   friendships: Map<string, Friendship>;
   chat: Map<string, ChatHour & { groupId: number }>;
   notes: Map<number, GroupNotes>;
+  /** dmKey(a, b) -> messages, oldest first */
+  dms: Map<string, ChatMessage[]>;
   codes: Map<string, { hash: string; expiresAt: number; attempts: number }>;
   /** newest last; `key`s already reported */
   reports: Report[];
@@ -31,7 +34,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 function seededState(): State {
   const now = new Date();
   const world = buildSeedWorld(now, { crowd: true }); // local demo only: two 20-person groups, the rest 4-6
-  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), notes: new Map(), codes: new Map(), reports: [], reportKeys: new Set(), nextGroupId: 1 };
+  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), notes: new Map(), dms: new Map(), codes: new Map(), reports: [], reportKeys: new Set(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
     const id = state.nextGroupId++;
@@ -72,8 +75,8 @@ function seededState(): State {
 
 // Survive Next.js dev hot reloads: one world per server process.
 // Bump the key when the stored shape changes so a running dev server reseeds instead of crashing.
-const g = globalThis as unknown as { __socialMapperMemoryV6?: State };
-const state = () => (g.__socialMapperMemoryV6 ??= seededState());
+const g = globalThis as unknown as { __socialMapperMemoryV7?: State };
+const state = () => (g.__socialMapperMemoryV7 ??= seededState());
 
 function publicUser(u: StoredUser): User {
   const { deviceKeyHash, email, ...rest } = u;
@@ -327,6 +330,29 @@ export const memoryStore: Store = {
 
   async listReports(limit) {
     return state().reports.slice(-limit).reverse();
+  },
+
+  async getDirectChat(a, b, now) {
+    const key = dmKey(a, b);
+    return { key, messages: pruneDm(state().dms.get(key) ?? [], now) };
+  },
+
+  async appendDirectChat(a, b, message, now) {
+    const s = state();
+    const key = dmKey(a, b);
+    s.dms.set(key, pruneDm([...(s.dms.get(key) ?? []), message], now));
+  },
+
+  async expireDirectChats(now) {
+    const s = state();
+    const cut = dmCutoff(now);
+    let removed = 0;
+    for (const [key, messages] of s.dms) {
+      const kept = messages.filter((m) => m.ts > cut);
+      if (kept.length) s.dms.set(key, kept);
+      else if (s.dms.delete(key)) removed++;
+    }
+    return removed;
   },
 
   async getFriendState(userId) {

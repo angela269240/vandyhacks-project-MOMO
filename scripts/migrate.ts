@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import oracledb from "oracledb";
 
-const TABLES = ["moderation_reports", "email_codes", "friendships", "group_notes", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
+const TABLES = ["direct_chats", "moderation_reports", "email_codes", "friendships", "group_notes", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
 
 /**
  * Additive changes for databases created from an older schema.sql.
@@ -44,6 +44,14 @@ const UPGRADES = [
      group_name  VARCHAR2(60 CHAR),
      item_at     TIMESTAMP WITH TIME ZONE,
      created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+   )`,
+  `CREATE TABLE direct_chats (
+     chat_key    VARCHAR2(80) PRIMARY KEY,
+     user_a      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     user_b      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     messages    JSON NOT NULL,
+     created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
    )`,
 ];
 

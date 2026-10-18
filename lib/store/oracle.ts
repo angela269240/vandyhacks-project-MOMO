@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import oracledb from "oracledb";
 import { query, withConnection } from "../db";
+import { DM_TTL_MS, dmCutoff, dmKey, pruneDm } from "../dm";
 import { joinNotes, notesExpiry } from "../notes";
 import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, Interest, Report, ReportCategory, ReportSeverity, User } from "../types";
 import { buildGraph } from "./graph";
@@ -31,6 +32,8 @@ type GroupRow = {
 };
 
 type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string };
+
+type DmRow = { CHAT_KEY: string; MESSAGES: ChatMessage[] | string };
 
 type NotesRow = { CONTENT: string | null; VERSION: number; CREATED_AT: Date; UPDATED_AT: Date; EXPIRES_AT: Date };
 
@@ -150,6 +153,8 @@ async function writeNotes(
     }
   }
 }
+
+const dmMessages = (r: DmRow) => (typeof r.MESSAGES === "string" ? (JSON.parse(r.MESSAGES) as ChatMessage[]) : r.MESSAGES);
 
 function toChatHour(r: ChatRow): ChatHour {
   const messages = typeof r.MESSAGES === "string" ? (JSON.parse(r.MESSAGES) as ChatMessage[]) : r.MESSAGES;
@@ -530,6 +535,71 @@ export const oracleStore: Store = {
         createdAt: iso(r.CREATED_AT)!,
       }),
     );
+  },
+
+  async getDirectChat(a, b, now) {
+    const key = dmKey(a, b);
+    const rows = await query<DmRow>(`SELECT chat_key, JSON_SERIALIZE(messages) AS messages FROM direct_chats WHERE chat_key = :k`, { k: key });
+    return { key, messages: rows[0] ? pruneDm(dmMessages(rows[0]), now) : [] };
+  },
+
+  /** Read-modify-write under a row lock so pruning and appends from both sides serialize. */
+  async appendDirectChat(a, b, message, now) {
+    const key = dmKey(a, b);
+    const [x, y] = a < b ? [a, b] : [b, a];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await withConnection(async (conn) => {
+          const res = await conn.execute<DmRow>(
+            `SELECT chat_key, JSON_SERIALIZE(messages) AS messages FROM direct_chats WHERE chat_key = :k FOR UPDATE`,
+            { k: key },
+          );
+          const current = res.rows?.[0];
+          const messages = JSON.stringify(pruneDm([...(current ? dmMessages(current) : []), message], now));
+          if (current) {
+            await conn.execute(`UPDATE direct_chats SET messages = JSON(:m), updated_at = :now WHERE chat_key = :k`, {
+              k: key,
+              m: { val: messages, type: oracledb.CLOB },
+              now,
+            });
+          } else {
+            await conn.execute(
+              `INSERT INTO direct_chats (chat_key, user_a, user_b, messages, created_at, updated_at)
+               VALUES (:k, :a, :b, JSON(:m), :now, :now)`,
+              { k: key, a: x, b: y, m: { val: messages, type: oracledb.CLOB }, now },
+            );
+          }
+          await conn.commit();
+        });
+      } catch (e) {
+        // Both sides sent the first message at once: retry once and append to the winner's row.
+        if (attempt === 0 && isDuplicate(e)) continue;
+        throw e;
+      }
+    }
+  },
+
+  async expireDirectChats(now) {
+    return withConnection(async (conn) => {
+      // Quiet for 60 days: every message is past the window.
+      const res = await conn.execute(`DELETE FROM direct_chats WHERE updated_at <= :cut`, {
+        cut: new Date(now.getTime() - DM_TTL_MS),
+      });
+      // Still active, but the oldest message (first, since they're appended in order) is past the window.
+      const stale = await conn.execute<DmRow>(
+        `SELECT chat_key, JSON_SERIALIZE(messages) AS messages FROM direct_chats
+          WHERE JSON_VALUE(messages, '$[0].ts') <= :cut FOR UPDATE`,
+        { cut: dmCutoff(now) },
+      );
+      for (const row of stale.rows ?? []) {
+        await conn.execute(`UPDATE direct_chats SET messages = JSON(:m) WHERE chat_key = :k`, {
+          k: row.CHAT_KEY,
+          m: { val: JSON.stringify(pruneDm(dmMessages(row), now)), type: oracledb.CLOB },
+        });
+      }
+      await conn.commit();
+      return res.rowsAffected ?? 0;
+    });
   },
 
   async getFriendState(userId) {

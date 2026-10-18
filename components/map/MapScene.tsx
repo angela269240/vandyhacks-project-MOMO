@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { AddToBookmark } from "@/components/bookmarks/AddToBookmark";
 import { OrbitLogo } from "@/components/brand/OrbitLogo";
+import { FriendsMenu } from "@/components/friends/FriendsMenu";
 import { RequestsBell } from "@/components/friends/RequestsBell";
 import { NewGroupDialog } from "@/components/groups/NewGroupDialog";
 import { Avatar } from "@/components/profile/Avatar";
@@ -275,6 +276,7 @@ export function MapScene() {
                       <Plus /> <span className="hidden sm:inline">New group</span>
                     </Button>
                     <RequestsBell />
+                    <FriendsMenu />
                     <button
                       onClick={() => setEditOpen(true)}
                       aria-label="Your profile"

@@ -1,11 +1,12 @@
 "use client";
 
-import { Check, Clock, Pencil, UserPlus, X } from "lucide-react";
+import { Check, Clock, MessageCircle, Pencil, UserPlus, X } from "lucide-react";
 import { motion } from "motion/react";
 import { forwardRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useDm } from "@/hooks/useDm";
 import { useGraph, useInterests } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api } from "@/lib/client/api";
@@ -43,6 +44,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
   const interests = useInterests();
   const { data: graph } = useGraph();
   const { me, friends, refreshFriends } = useMe();
+  const { openChat } = useDm();
   const [busy, setBusy] = useState(false);
   const isMe = me?.id === user.id;
   const mine = new Set(me?.interestIds ?? []);
@@ -213,6 +215,18 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
             render={<a href={user.linkedin} target="_blank" rel="noopener noreferrer" />}
           >
             <LinkedinIcon /> LinkedIn
+          </Button>
+        )}
+        {me && !isMe && (
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-label={`Chat with ${user.name}`}
+            title="Chat"
+            className="ml-auto"
+            onClick={() => openChat(user.id)}
+          >
+            <MessageCircle />
           </Button>
         )}
       </div>

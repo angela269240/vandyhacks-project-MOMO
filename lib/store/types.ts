@@ -1,4 +1,4 @@
-import type { Bookmark, ChatHour, ChatMessage, FriendState, Graph, Group, GroupNotes, Interest, ProfileInput, Report, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, DirectChat, FriendState, Graph, Group, GroupNotes, Interest, ProfileInput, Report, User } from "../types";
 
 export type UserPatch = Partial<ProfileInput> & { bookmarks?: Bookmark[] };
 
@@ -69,6 +69,13 @@ export interface Store {
   addReports(reports: NewReport[], now: Date): Promise<number>;
   /** Newest first. */
   listReports(limit: number): Promise<Report[]>;
+
+  /** The chat between two users (either order), without messages past 60 days. Empty if they've never talked. */
+  getDirectChat(a: string, b: string, now: Date): Promise<DirectChat>;
+  /** Appends a message, creating the chat if needed and dropping messages past 60 days. */
+  appendDirectChat(a: string, b: string, message: ChatMessage, now: Date): Promise<void>;
+  /** Deletes messages past 60 days, and chats left with none. Returns how many chats were removed. */
+  expireDirectChats(now: Date): Promise<number>;
 
   getFriendState(userId: string): Promise<FriendState>;
   requestFriend(from: string, to: string): Promise<"pending" | "accepted" | "exists">;
