@@ -89,7 +89,7 @@
     "typecheck": "pass",
     "lint": "pass",
     "build": "not run",
-    "manual": "Dev server on the memory store with LiveKit off: transcript API filed an event at top and two facts at bottom, ignored small talk, 403 before joining, 409 on a stale save; UI: notes view, live AI update, conflict banner + Merge both, switch persists, download filename/content, summary card (9 seed messages). 60-day expiry checked on the memory store with a simulated clock. NOT tested: real microphone -> OCI Speech path (the browser pane blocks mic), the Oracle store (shared DB has no group_notes table yet)."
+    "manual": "Dev server on the memory store with LiveKit off: transcript API filed an event at top and two facts at bottom, ignored small talk, 403 before joining, 409 on a stale save; UI: notes view, live AI update, conflict banner + Merge both, switch persists, download filename/content, summary card (9 seed messages). 60-day expiry checked on the memory store with a simulated clock. NOT tested: real microphone -> OCI Speech path (the browser pane blocks mic), the Oracle store (shared DB has no group_notes table yet). After the warm-redesign merge: notes view, summarize and download controls checked again on the memory store."
   },
   "next_steps": [
     "One person applies the schema to the shared DB: npm run db:migrate -- --upgrade (creates group_notes; safe to re-run).",
@@ -102,6 +102,7 @@
   "blockers": [],
   "conflict_notes": [
     "The paused `color` session claims components/room/**; this branch edits ChatPanel.tsx, RoomConnection.tsx, RoomView.tsx and adds NotesPanel.tsx with the current neon/white-alpha classes. Port those to hue vars when merging.",
-    "Merged origin/main (f30c162, halved demo bubbles) into feat/room-notes: lib/store/memory.ts seededState conflicted on one line pair; kept main's comment and this branch's `notes: new Map()`. Memory key stays __socialMapperMemoryV5. Verified: typecheck, lint, seed counts 20/6/6/4/20/4 + 11 ring, notes expiry check, dev server /api/graph and /notes."
+    "Merged origin/main (f30c162, halved demo bubbles) into feat/room-notes: lib/store/memory.ts seededState conflicted on one line pair; kept main's comment and this branch's `notes: new Map()`. Memory key stays __socialMapperMemoryV5. Verified: typecheck, lint, seed counts 20/6/6/4/20/4 + 11 ring, notes expiry check, dev server /api/graph and /notes.",
+    "Merged origin/main (3fd3a9c, warm redesign #17): components/room/ChatPanel.tsx conflicted (imports + header/list). Kept the notes/summary structure and re-applied main's theme: border-border, no dot glow, identityColor/hueVar('stone') avatars, text-primary for own name, foreground/10 hovers; NotesPanel and notes indicators moved off emerald/amber/white to --hue-sage / --hue-ochre / foreground tokens. Done in a separate worktree because the main checkout had someone's uncommitted map edits. Verified: typecheck, lint, dev server (memory store) notes view in the warm theme."
   ]
 }

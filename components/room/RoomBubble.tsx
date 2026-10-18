@@ -1,5 +1,3 @@
-import { rgba } from "@/lib/colors";
-
 export type BubbleEls = { outline: SVGPathElement; halo: SVGPathElement; glow: SVGCircleElement; rings: SVGGElement };
 
 /** Closed organic outline: a circle with two slow sine wobbles, smoothed with quadratic midpoints. */
@@ -18,7 +16,7 @@ export function blobPath(cx: number, cy: number, r: number, t: number) {
 }
 
 /**
- * The room's big glowing bubble, in the group's color. Geometry is written by the room's animation loop
+ * The room's softly tinted bubble, in the group's color. Geometry is written by the room's animation loop
  * (through `register`) so it can breathe and resize smoothly without React re-rendering.
  */
 export function RoomBubble({ color, register }: { color: string; register: (els: BubbleEls | null) => void }) {
@@ -32,26 +30,20 @@ export function RoomBubble({ color, register }: { color: string; register: (els:
   return (
     <g aria-hidden>
       <defs>
-        <radialGradient id="room-glow">
-          <stop offset="55%" stopColor={rgba(color, 0.12)} />
-          <stop offset="100%" stopColor={rgba(color, 0)} />
-        </radialGradient>
         <radialGradient id="room-fill" cx="50%" cy="42%" r="60%">
-          <stop offset="0%" stopColor={rgba(color, 0.17)} />
-          <stop offset="65%" stopColor={rgba(color, 0.07)} />
-          <stop offset="100%" stopColor={rgba(color, 0.03)} />
+          <stop offset="0%" stopColor={`color-mix(in srgb, ${color} 14%, transparent)`} />
+          <stop offset="100%" stopColor={`color-mix(in srgb, ${color} 9%, transparent)`} />
         </radialGradient>
       </defs>
-      <circle ref={set("glow")} fill="url(#room-glow)" />
-      {/* soft outer glow: a wide faint stroke under a crisp one, no per-frame blur filters */}
-      <path ref={set("halo")} fill="none" stroke={rgba(color, 0.14)} strokeWidth={14} />
-      <path ref={set("outline")} fill="url(#room-fill)" stroke={rgba(color, 0.55)} strokeWidth={1.5} />
+      <circle ref={set("glow")} fill="none" />
+      <path ref={set("halo")} fill="none" stroke="none" />
+      <path ref={set("outline")} fill="url(#room-fill)" stroke={color} strokeOpacity={0.35} strokeWidth={1.5} />
       <g ref={set("rings")}>
         <g className="room-orbit" style={{ animationDuration: "140s" }}>
-          <ellipse rx={0.8} ry={0.34} fill="none" stroke={rgba(color, 0.14)} strokeDasharray="2 6" vectorEffect="non-scaling-stroke" transform="rotate(-18)" />
+          <ellipse rx={0.8} ry={0.34} fill="none" stroke={color} strokeOpacity={0.14} strokeDasharray="2 6" vectorEffect="non-scaling-stroke" transform="rotate(-18)" />
         </g>
         <g className="room-orbit" style={{ animationDuration: "190s", animationDirection: "reverse" }}>
-          <ellipse rx={0.62} ry={0.62} fill="none" stroke={rgba(color, 0.08)} vectorEffect="non-scaling-stroke" />
+          <ellipse rx={0.62} ry={0.62} fill="none" stroke={color} strokeOpacity={0.08} vectorEffect="non-scaling-stroke" />
         </g>
       </g>
     </g>

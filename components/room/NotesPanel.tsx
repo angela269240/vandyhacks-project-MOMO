@@ -96,11 +96,17 @@ export function NotesPanel({
   useEffect(() => areaRef.current?.focus({ preventScroll: true }), []);
 
   const dot =
-    status === "listening" ? "bg-emerald-400 animate-pulse" : status === "error" ? "bg-amber-400" : notetakingOn ? "bg-white/40" : "bg-white/15";
+    status === "listening"
+      ? "bg-(--hue-sage) animate-pulse"
+      : status === "error"
+        ? "bg-(--hue-ochre)"
+        : notetakingOn
+          ? "bg-foreground/40"
+          : "bg-foreground/15";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-col gap-1.5 border-b border-white/10 px-4 py-2.5">
+      <div className="flex shrink-0 flex-col gap-1.5 border-b border-border px-4 py-2.5">
         <label className="flex items-center gap-2 text-xs">
           <span className={cn("size-1.5 rounded-full", dot)} aria-hidden />
           <span className="font-medium">AI notetaking</span>
@@ -119,9 +125,9 @@ export function NotesPanel({
       </div>
 
       {conflict && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-[11px]">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--hue-ochre)/25 bg-(--hue-ochre)/10 px-4 py-2 text-[11px]">
           <span className="mr-auto">The notes changed while you were editing.</span>
-          <button onClick={takeTheirs} className="rounded px-1.5 py-0.5 font-medium hover:bg-white/10">
+          <button onClick={takeTheirs} className="rounded px-1.5 py-0.5 font-medium hover:bg-foreground/10">
             Use theirs
           </button>
           <button
@@ -131,7 +137,7 @@ export function NotesPanel({
               setDraft(merged);
               save(merged, version);
             }}
-            className="rounded px-1.5 py-0.5 font-medium hover:bg-white/10"
+            className="rounded px-1.5 py-0.5 font-medium hover:bg-foreground/10"
           >
             Merge both
           </button>
@@ -155,13 +161,13 @@ export function NotesPanel({
         className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground"
       />
 
-      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-white/10 px-4 text-[11px] text-muted-foreground">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-4 text-[11px] text-muted-foreground">
         <span className="mr-auto truncate">
           {notes?.expiresAt ? `Deleted on ${dayLabel(notes.expiresAt)}` : "Kept for 60 days from the first note"}
         </span>
         {dirty && (
           <>
-            <button onClick={takeTheirs} className="rounded px-2 py-1 hover:bg-white/10 hover:text-foreground">
+            <button onClick={takeTheirs} className="rounded px-2 py-1 hover:bg-foreground/10 hover:text-foreground">
               Discard
             </button>
             <button

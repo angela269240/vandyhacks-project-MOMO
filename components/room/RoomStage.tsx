@@ -74,7 +74,7 @@ function useWithLeaving(members: StageMember[]) {
   );
 }
 
-/** The radial room: glowing bubble, friendship lines, and people floating in stable seats. */
+/** The radial room: a softly tinted bubble, friendship lines, and people floating in stable seats. */
 export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover, onSelect, getLevel }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { w, h } = useSize(wrapRef);
@@ -277,12 +277,6 @@ export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover,
     <div ref={wrapRef} className="absolute inset-0">
       {w > 0 && (
         <svg className="absolute inset-0 h-full w-full overflow-visible" aria-label="People in this room" role="group">
-          <defs>
-            <radialGradient id="member-shine" cx="35%" cy="30%" r="65%">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
-              <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-            </radialGradient>
-          </defs>
           {/* layers, bottom to top: bubble, friendship lines, people */}
           <RoomBubble color={color} register={registerBubble} />
           <RoomFriendshipEdges edges={edges} register={registerEdge} />

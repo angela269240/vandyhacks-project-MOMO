@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Avatar } from "@/components/profile/Avatar";
 import type { NoteTakerStatus } from "@/hooks/useNoteTaker";
 import { api } from "@/lib/client/api";
-import { INTERESTS } from "@/lib/interests";
+import { hueVar, identityColor } from "@/lib/colors";
 import type { ChatHour, GraphUser, GroupNotes } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NotesPanel, downloadNotes } from "./NotesPanel";
@@ -16,7 +16,7 @@ const hourLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: "
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 const iconButton =
-  "rounded-md p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35";
+  "rounded-md p-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35";
 
 export type ChatNotes = {
   notes: GroupNotes | undefined;
@@ -126,8 +126,8 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-scroll-region>
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-4">
-        <span className="size-2 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} aria-hidden />
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+        <span className="size-2 rounded-full" style={{ background: color }} aria-hidden />
         <h2 className="font-heading text-sm font-semibold">{view === "notes" ? "Notes" : "Chat"}</h2>
         <span className="truncate text-xs text-muted-foreground">{groupName}</span>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -180,7 +180,7 @@ export function ChatPanel({
           aria-label="Messages"
         >
           {summary && (
-            <section className="mt-2 mb-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5" aria-label="Summary">
+            <section className="mt-2 mb-3 rounded-xl border border-border bg-foreground/[0.04] px-3 py-2.5" aria-label="Summary">
               <div className="mb-1 flex items-center gap-1.5 text-[10px] tracking-wider text-muted-foreground uppercase">
                 <Sparkles className="size-3" />
                 Summary of the last {summary.count} messages
@@ -195,21 +195,21 @@ export function ChatPanel({
           {hours.map((h) => (
             <section key={h.hourStart} className="mb-3">
               <div className="my-3 flex items-center gap-3 text-[10px] tracking-wider text-muted-foreground uppercase">
-                <span className="h-px flex-1 bg-white/10" />
+                <span className="h-px flex-1 bg-border" />
                 {hourLabel(h.hourStart)}
-                <span className="h-px flex-1 bg-white/10" />
+                <span className="h-px flex-1 bg-border" />
               </div>
               <ul className="flex flex-col gap-3">
                 {h.messages.map((m) => {
                   const who = people.get(m.userId);
-                  const c = INTERESTS.find((i) => i.id === who?.interestIds[0])?.color ?? "#60A5FA";
+                  const c = who ? identityColor(who) : hueVar("stone");
                   const mine = m.userId === meId;
                   return (
                     <li key={messageKey(m)} className="flex gap-2.5">
                       <Avatar name={who?.name ?? "?"} url={who?.avatarUrl} color={c} size={28} className="mt-0.5" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
-                          <span className={cn("truncate text-sm font-medium", mine && "text-[#67E8F9]")}>
+                          <span className={cn("truncate text-sm font-medium", mine && "text-primary")}>
                             {mine ? "You" : (who?.name ?? "Someone")}
                           </span>
                           <time dateTime={m.ts} className="shrink-0 text-[11px] text-muted-foreground">
@@ -232,7 +232,7 @@ export function ChatPanel({
           e.preventDefault();
           send();
         }}
-        className="flex shrink-0 items-end gap-2 border-t border-white/10 p-3"
+        className="flex shrink-0 items-end gap-2 border-t border-border p-3"
       >
         <button
           type="button"
@@ -241,12 +241,12 @@ export function ChatPanel({
           aria-pressed={view === "notes"}
           title={listening ? "Notes (AI is listening)" : "Notes"}
           className={cn(
-            "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-white/10 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-            view === "notes" && "bg-white/10 text-foreground",
+            "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+            view === "notes" && "bg-foreground/10 text-foreground",
           )}
         >
           <NotebookPen className="size-4" />
-          {listening && <span className="absolute top-2 right-2 size-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden />}
+          {listening && <span className="absolute top-2 right-2 size-1.5 animate-pulse rounded-full bg-(--hue-sage)" aria-hidden />}
         </button>
         <textarea
           ref={inputRef}

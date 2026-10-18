@@ -86,7 +86,7 @@ export function RoomDock({
       initial={{ y: 28, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ delay: 0.35, type: "spring", stiffness: 260, damping: 24 }}
-      className="glass flex h-[72px] items-center gap-1 rounded-full px-2 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.8)] sm:gap-1.5 sm:px-3"
+      className="glass elevated flex h-[72px] items-center gap-1 rounded-full px-2 sm:gap-1.5 sm:px-3"
     >
       {actions.map((a) => (
         <Tooltip key={a.id}>
@@ -99,12 +99,12 @@ export function RoomDock({
                 aria-expanded={a.id === "chat" ? chatOpen : undefined}
                 aria-disabled={a.blocked || undefined}
                 className={cn(
-                  "relative flex h-14 w-[68px] flex-col items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-[background-color,color,box-shadow] duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:w-[84px] [&_svg]:size-5",
+                  "relative flex h-14 w-[68px] flex-col items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:w-[84px] [&_svg]:size-5",
                   a.tone === "danger"
-                    ? "text-[#FB7185] hover:bg-[#FB7185]/12 hover:shadow-[0_0_22px_-4px_rgba(251,113,133,0.6)]"
+                    ? "text-destructive hover:bg-destructive/12"
                     : a.active
-                      ? "bg-[#22D3EE]/12 text-[#22D3EE] shadow-[0_0_22px_-6px_rgba(34,211,238,0.7)]"
-                      : "text-foreground/85 hover:bg-white/8 hover:text-foreground",
+                      ? "border border-primary/35 bg-primary/12 text-primary"
+                      : "text-foreground/85 hover:bg-foreground/8 hover:text-foreground",
                   a.blocked && "opacity-55",
                 )}
               />
@@ -113,7 +113,7 @@ export function RoomDock({
             {a.icon}
             <span className="max-w-full truncate px-1">{a.label}</span>
             {a.badge ? (
-              <span className="absolute top-0.5 right-3 flex size-[18px] items-center justify-center rounded-full bg-[#F472B6] text-[10px] font-bold text-black shadow-[0_0_10px_#F472B6] sm:right-5">
+              <span className="absolute top-0.5 right-3 flex size-[18px] items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground sm:right-5">
                 {a.badge > 9 ? "9+" : a.badge}
               </span>
             ) : null}

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useInterests } from "@/hooks/useGraph";
+import { identityColor, interestColor } from "@/lib/colors";
 import { profileSchema } from "@/lib/schemas";
 import type { ProfileInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,7 @@ export function ProfileForm({
     }
   };
 
-  const tagColor = interests.find((i) => i.id === tags[0])?.color ?? "#60A5FA";
+  const tagColor = identityColor({ interestIds: tags });
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
@@ -161,9 +162,9 @@ export function ProfileForm({
                 disabled={!on && tags.length >= MAX_TAGS}
                 className={cn(
                   "rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-40",
-                  on ? "tag-glow" : "border-foreground/15 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                  on ? "tag-active" : "border-foreground/15 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
                 )}
-                style={{ "--glow": i.color } as React.CSSProperties}
+                style={{ "--tag": interestColor(i.id) } as React.CSSProperties}
               >
                 {i.name}
               </button>

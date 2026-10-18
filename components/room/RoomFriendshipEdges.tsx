@@ -51,13 +51,12 @@ function EdgeLine({ edge, register }: { edge: DrawnEdge; register: (key: string,
         <stop offset="0%" stopColor={edge.colorA} />
         <stop offset="100%" stopColor={edge.colorB} />
       </linearGradient>
-      {/* a faint wide copy under the line reads as glow, without a blur filter */}
       <line
         ref={set("glow")}
         stroke={`url(#${id})`}
         strokeWidth={6}
         strokeLinecap="round"
-        style={{ opacity: highlight && !edge.fading ? 0.16 : 0, transition: "opacity 250ms ease" }}
+        style={{ opacity: 0 }}
       />
       <line
         ref={set("line")}
