@@ -20,7 +20,7 @@ import { scene, sceneEvents } from "@/lib/client/scene";
 import type { Group, GraphUser } from "@/lib/types";
 import { ChatPanel } from "./ChatPanel";
 import { ParticipantCarousel } from "./ParticipantCarousel";
-import { useRoomConnection } from "./RoomConnection";
+import { type PanelTab, useRoomConnection } from "./RoomConnection";
 import { RoomDock } from "./RoomDock";
 import { RoomHeader } from "./RoomHeader";
 import type { StageMember } from "./RoomMember";
@@ -272,6 +272,12 @@ export function RoomView() {
       }
     : null;
 
+  /** a dock button toggles the side panel on its tab, or switches tabs if the panel shows the other one */
+  const openPanel = (tab: PanelTab) => {
+    if (conn.chatOpen && conn.panelTab === tab) return conn.setChatOpen(false);
+    conn.setPanelTab(tab);
+    conn.setChatOpen(true);
+  };
   const chatWidth = isWide ? 352 : 312;
   const chat = group && (
     <ChatPanel
@@ -285,6 +291,8 @@ export function RoomView() {
       onSend={conn.sendChat}
       onClose={() => conn.setChatOpen(false)}
       canSummarize={conn.ai.summary}
+      tab={conn.panelTab}
+      onTab={conn.setPanelTab}
       notes={{
         notes: conn.notes,
         save: conn.saveNotes,
@@ -391,7 +399,7 @@ export function RoomView() {
                 {!isDesktop && ui.chatOpen && (
                   <motion.section
                     key="chat-sheet"
-                    aria-label="Chat"
+                    aria-label={conn.panelTab === "notes" ? "Notes" : "Chat"}
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "46dvh", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -411,12 +419,15 @@ export function RoomView() {
               >
                 <RoomDock
                   chatOpen={ui.chatOpen}
+                  panelTab={conn.panelTab}
+                  notesListening={conn.noteTaker === "listening"}
                   unread={conn.unread}
                   micOn={voice.micOn}
                   screenOn={voice.screenOn}
                   otherSharer={share && share.ownerId !== meId ? firstName(share.ownerId) : null}
                   connecting={ui.phase === "connecting" || ui.phase === "reconnecting"}
-                  onChat={() => conn.setChatOpen(!conn.chatOpen)}
+                  onChat={() => openPanel("chat")}
+                  onNotes={() => openPanel("notes")}
                   onMic={conn.toggleMic}
                   onScreen={conn.toggleScreen}
                   onLeave={leaveRoom}
@@ -429,7 +440,7 @@ export function RoomView() {
               {isDesktop && ui.chatOpen && (
                 <motion.aside
                   key="chat-panel"
-                  aria-label="Chat"
+                  aria-label={conn.panelTab === "notes" ? "Notes" : "Chat"}
                   initial={{ width: 0, opacity: 0 }}
                   animate={{ width: chatWidth, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
