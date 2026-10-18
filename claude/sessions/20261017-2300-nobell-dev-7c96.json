@@ -1,0 +1,44 @@
+{
+  "id": "20261017-2300-nobell-dev-7c96",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "6ee44a8",
+  "started": "2026-10-18T04:00:32.662Z",
+  "ended": "2026-10-18T04:04:43.193Z",
+  "status": "done",
+  "goal": "Let users drag other people's nodes on the map, clamped inside their group bubble",
+  "summary": "Map: you can now drag other people's circles, not just your own. A drag of someone else is `bounded`: each move clamps the point to memberSpread(groupId) around the group's layout anchor (the same free zone the anchor force leaves alone), and on release the pin is dropped (fx/fy cleared, velocity zeroed) so the sim keeps it inside the bubble. People with no group (outer ring) are not draggable. Purely client-side: no API call, no broadcast, other viewers don't see it. Your own circle behaves exactly as before (free drag, drop on a bubble to join).",
+  "claims": [
+    "components/map/SocialGraph.tsx"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    "Clamp to memberSpread around layout.anchors, not the drawn (eased) bubble: it matches the physics free zone, so a dropped circle isn't pulled back.",
+    "Bounded drags capture the pointer only once movement passes 4px, so a plain click on someone still opens their profile.",
+    "Bounded drags reheat the simulation once so collide/charge nudge neighbours aside.",
+    "Dragged bounded node stays in the hull computation (own-node drags are still excluded) so the outline doesn't flicker."
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass (eslint components/map/SocialGraph.tsx)",
+    "build": "not run",
+    "manual": "pass: human dragged other people within their bubbles on localhost:3001 and confirmed it works"
+  },
+  "next_steps": [
+    "Open a PR from nobell/dev to main."
+  ],
+  "open_questions": [
+    "Should rearranged positions be shared live with other viewers? Currently local-only."
+  ],
+  "blockers": [],
+  "conflict_notes": [
+    "Branch `color` (session 20261017-2000-color-c0l0, paused) claims components/map/**; it mostly changes colors, while this change touches the pointer handlers and the byGroup hull filter in SocialGraph.tsx."
+  ]
+}
