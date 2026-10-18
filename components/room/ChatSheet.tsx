@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, SendHorizontal, Sparkles } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function ChatSheet({
             <span className="size-2.5 rounded-full" style={{ background: color }} />
             {groupName}
           </SheetTitle>
-          <SheetDescription>Chat is kept by the hour. Recaps summarize what you missed.</SheetDescription>
+          <SheetDescription>Chat is kept by the hour.</SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-scroll-region>
@@ -76,15 +76,6 @@ export function ChatSheet({
                 {hourLabel(h.hourStart)}
                 <span className="h-px flex-1 bg-foreground/10" />
               </div>
-              {h.summary && (
-                <details open className="group mb-3 rounded-xl border border-foreground/10 bg-foreground/[0.04] p-3">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium" style={{ color: `color-mix(in oklab, ${color} 60%, var(--foreground))` }}>
-                    <Sparkles className="size-3.5" /> While you were away…
-                    <ChevronDown className="ml-auto size-3.5 transition group-open:rotate-180" />
-                  </summary>
-                  <p className="mt-2 text-sm leading-relaxed text-foreground/85">{h.summary}</p>
-                </details>
-              )}
               <ul className="flex flex-col gap-2.5">
                 {h.messages.map((m) => {
                   const who = people.get(m.userId);

@@ -43,7 +43,7 @@ export type Graph = { users: GraphUser[]; groups: GraphGroup[]; edges: Edge[] };
 
 export type ChatMessage = { ts: string; userId: string; text: string };
 
-export type ChatHour = { hourStart: string; messages: ChatMessage[]; summary: string | null };
+export type ChatHour = { hourStart: string; messages: ChatMessage[] };
 
 export type FriendState = { friends: string[]; incoming: string[]; outgoing: string[] };
 

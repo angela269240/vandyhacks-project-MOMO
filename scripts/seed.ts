@@ -42,12 +42,12 @@ async function main() {
     const groupIds: number[] = [];
     for (const g of world.groups) {
       const res = await conn.execute(
-        `INSERT INTO interest_groups (name, color, category, created_by) VALUES (:name, :color, :category, :by) RETURNING id INTO :id`,
+        `INSERT INTO interest_groups (name, color, category, created_by) VALUES (:name, :color, :category, :byUser) RETURNING id INTO :id`,
         {
           name: g.name,
           color: g.color,
           category: g.category,
-          by: world.users[g.createdByIndex].id,
+          byUser: world.users[g.createdByIndex].id,
           id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
         },
       );
@@ -73,14 +73,14 @@ async function main() {
     );
 
     await conn.executeMany(
-      `INSERT INTO friendships (user_a, user_b, requested_by, status) VALUES (:a, :b, :by, :status)`,
-      world.friendships.map((f) => ({ a: f.a, b: f.b, by: f.requestedBy, status: f.status })),
+      `INSERT INTO friendships (user_a, user_b, requested_by, status) VALUES (:a, :b, :byUser, :status)`,
+      world.friendships.map((f) => ({ a: f.a, b: f.b, byUser: f.requestedBy, status: f.status })),
     );
 
     for (const c of world.chats) {
       await conn.execute(
-        `INSERT INTO group_chat_hours (group_id, hour_start, messages, summary) VALUES (:g, :h, JSON(:m), :s)`,
-        { g: groupIds[c.groupIndex], h: new Date(c.hourStart), m: JSON.stringify(c.messages), s: c.summary },
+        `INSERT INTO group_chat_hours (group_id, hour_start, messages) VALUES (:g, :h, JSON(:m))`,
+        { g: groupIds[c.groupIndex], h: new Date(c.hourStart), m: JSON.stringify(c.messages) },
       );
     }
 

@@ -10,8 +10,7 @@ import { useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { useConfig, useSseChannel } from "@/hooks/useRealtime";
 import { api, fetcher, loadIdentity } from "@/lib/client/api";
-import { useGroupColor } from "@/lib/client/groupHues";
-import { scene } from "@/lib/client/scene";
+import { scene, sceneEvents } from "@/lib/client/scene";
 import type { ChatHour, Group, RoomEvent } from "@/lib/types";
 import { ChatSheet } from "./ChatSheet";
 import { Dock } from "./Dock";
@@ -56,7 +55,7 @@ function appendChat(hours: ChatHour[], payload: Extract<RoomEvent, { type: "chat
   const { hourStart, message } = payload;
   const existing = hours.find((h) => h.hourStart === hourStart);
   if (existing?.messages.some((m) => m.ts === message.ts && m.userId === message.userId)) return hours;
-  if (!existing) return [...hours, { hourStart, messages: [message], summary: null }];
+  if (!existing) return [...hours, { hourStart, messages: [message] }];
   return hours.map((h) => (h === existing ? { ...h, messages: [...h.messages, message] } : h));
 }
 
@@ -156,7 +155,7 @@ export function RoomView() {
 
   // ---- leaving: you stay in the bubble (as "away"); the view just zooms back out ----
   const exitRoom = useCallback(
-    (how: "leave" | "scroll" | "esc") => {
+    (how: "leave" | "scroll" | "esc" | "background") => {
       if (exiting.current) return;
       exiting.current = true;
       setChatOpen(false);
@@ -168,6 +167,11 @@ export function RoomView() {
     },
     [name, router],
   );
+
+  useEffect(() => {
+    const offExit = sceneEvents.on("exit-room", () => exitRoom("background"));
+    return offExit;
+  }, [exitRoom]);
 
   // ---- scroll up (or pinch out) to zoom back out to the map: scrubbed, commits past a threshold ----
   useEffect(() => {

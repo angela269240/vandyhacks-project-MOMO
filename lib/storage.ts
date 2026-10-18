@@ -12,12 +12,17 @@ let client: ObjectStorageClient | null = null;
 const os = () => (client ??= new ObjectStorageClient({ authenticationDetailsProvider: ociAuth() }));
 const endpoint = () => `https://objectstorage.${process.env.OCI_REGION}.oraclecloud.com`;
 const bucketRef = () => ({ namespaceName: process.env.OCI_OS_NAMESPACE!, bucketName: process.env.OCI_OS_BUCKET! });
+/** Avatars can live in their own public bucket so chat archives in OCI_OS_BUCKET stay private. */
+const avatarBucketRef = () => ({
+  namespaceName: process.env.OCI_OS_NAMESPACE!,
+  bucketName: process.env.OCI_OS_AVATAR_BUCKET || process.env.OCI_OS_BUCKET!,
+});
 
-/** URL a browser can GET the object from: a bucket-level read PAR if provided, else the (public bucket) URL. */
+/** URL a browser can GET the avatar from: a bucket-level read PAR if provided, else the (public bucket) URL. */
 function publicUrl(objectName: string) {
   const readPar = process.env.OCI_OS_READ_PAR_URL;
   if (readPar) return `${readPar.replace(/\/?$/, "/")}${encodeURIComponent(objectName)}`;
-  const { namespaceName, bucketName } = bucketRef();
+  const { namespaceName, bucketName } = avatarBucketRef();
   return `${endpoint()}/n/${namespaceName}/b/${bucketName}/o/${encodeURIComponent(objectName)}`;
 }
 
@@ -32,7 +37,7 @@ export async function createAvatarUpload(userId: string): Promise<{ uploadUrl: s
     return { uploadUrl: `/api/avatars/local/${key}`, publicUrl: `/api/avatars/local/${key}` };
   }
   const res = await os().createPreauthenticatedRequest({
-    ...bucketRef(),
+    ...avatarBucketRef(),
     createPreauthenticatedRequestDetails: {
       name: `avatar-upload-${userId}-${Date.now()}`,
       objectName,

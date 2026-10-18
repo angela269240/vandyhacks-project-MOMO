@@ -49,73 +49,48 @@
 }
 
 :root {
-  /* Social Mapper, dark: warm charcoal, bone text, clay accent */
-  --bg-0: #1c1b19;
-  --bg-1: #262422;
-  --surface: rgba(42, 40, 37, 0.86);
-  --text-dim: #a59d91;
+  /* Orbit: always-dark, deep blue / black */
+  --bg-0: #03050c;
+  --bg-1: #0a1230;
+  --surface: rgba(14, 22, 52, 0.72);
+  --text-dim: #8a96c2;
 
-  --background: #1f1e1c;
-  --foreground: #ece6db;
-  --card: rgba(42, 40, 37, 0.88);
-  --card-foreground: #ece6db;
-  --popover: rgba(40, 38, 35, 0.96);
-  --popover-foreground: #ece6db;
-  --primary: #da9982;
-  --primary-foreground: #1f1e1c;
-  --secondary: rgba(236, 230, 219, 0.07);
-  --secondary-foreground: #ece6db;
-  --muted: rgba(236, 230, 219, 0.06);
-  --muted-foreground: #a59d91;
-  --accent: rgba(236, 230, 219, 0.08);
-  --accent-foreground: #ece6db;
-  --destructive: #e18881;
-  --border: rgba(236, 230, 219, 0.1);
-  --input: rgba(236, 230, 219, 0.14);
-  --ring: rgba(218, 153, 130, 0.55);
-  --radius: 0.875rem;
-  --sidebar: #262422;
-  --sidebar-foreground: #ece6db;
-  --sidebar-primary: #da9982;
-  --sidebar-primary-foreground: #1f1e1c;
-  --sidebar-accent: rgba(236, 230, 219, 0.08);
-  --sidebar-accent-foreground: #ece6db;
-  --sidebar-border: rgba(236, 230, 219, 0.1);
-  --sidebar-ring: rgba(218, 153, 130, 0.55);
-  --room-veil: rgba(22, 21, 19, 0.7);
-  --overlay: rgba(14, 13, 12, 0.55);
-
-  /* soft elevation instead of glow */
-  --elev-sm: 0 1px 2px rgb(0 0 0 / 0.25);
-  --elev: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
-  --grain-opacity: 0.05;
-
-  /* Map palette (equal OKLCH lightness/chroma; see lib/colors.ts) */
-  --hue-sage: #84b28d;
-  --hue-clay: #cd9683;
-  --hue-slate: #7eaacf;
-  --hue-ochre: #bda071;
-  --hue-plum: #b996c1;
-  --hue-teal: #6cb3b2;
-  --hue-rose: #cc929e;
-  --hue-olive: #a3aa76;
-  --hue-stone: #aba39a;
-  --chart-1: var(--hue-sage);
-  --chart-2: var(--hue-clay);
-  --chart-3: var(--hue-slate);
-  --chart-4: var(--hue-ochre);
-  --chart-5: var(--hue-plum);
-
-  /* read by the map canvas */
-  --map-ink: #ece6db;
-  --map-ink-muted: #a59d91;
-  --map-link: #c8bfb2;
-  --map-node-ink: #1f1e1c;
-  --map-node-edge: #1f1e1c;
-  --map-shadow: rgba(0, 0, 0, 0.45);
+  --background: #03050c;
+  --foreground: #e6ecff;
+  --card: rgba(14, 22, 52, 0.72);
+  --card-foreground: #e6ecff;
+  --popover: rgba(12, 19, 46, 0.92);
+  --popover-foreground: #e6ecff;
+  --primary: #22d3ee;
+  --primary-foreground: #03131a;
+  --secondary: rgba(120, 150, 255, 0.1);
+  --secondary-foreground: #e6ecff;
+  --muted: rgba(120, 150, 255, 0.08);
+  --muted-foreground: #8a96c2;
+  --accent: rgba(120, 150, 255, 0.12);
+  --accent-foreground: #e6ecff;
+  --destructive: #fb7185;
+  --border: rgba(120, 150, 255, 0.14);
+  --input: rgba(120, 150, 255, 0.18);
+  --ring: rgba(34, 211, 238, 0.6);
+  --chart-1: #22d3ee;
+  --chart-2: #a78bfa;
+  --chart-3: #f472b6;
+  --chart-4: #34d399;
+  --chart-5: #fbbf24;
+  --radius: 0.75rem;
+  --sidebar: #0a1230;
+  --sidebar-foreground: #e6ecff;
+  --sidebar-primary: #22d3ee;
+  --sidebar-primary-foreground: #03131a;
+  --sidebar-accent: rgba(120, 150, 255, 0.12);
+  --sidebar-accent-foreground: #e6ecff;
+  --sidebar-border: rgba(120, 150, 255, 0.14);
+  --sidebar-ring: rgba(34, 211, 238, 0.6);
+  --room-veil: rgba(3, 5, 12, 0.72);
 }
 
-/* Light mode (toggled from the upper-right switch): warm cream paper, ink text */
+/* White mode (toggled from the upper-right switch) */
 html.light {
   --bg-0: #efe8db;
   --bg-1: #faf6ee;
