@@ -71,3 +71,23 @@ export const transcriptSchema = z.object({
   text: z.string().trim().min(1).max(2000),
   timeZone: z.string().max(64).optional(),
 });
+
+export const emailSchema = z.string().trim().toLowerCase().max(254).pipe(z.email("Enter a valid email address"));
+
+/** A school address: the domain ends in .edu (vanderbilt.edu, cs.vanderbilt.edu, ...). */
+export const eduEmailSchema = emailSchema.refine((e) => /\.edu$/.test(e.split("@")[1] ?? ""), {
+  message: "Use your school email (ending in .edu)",
+});
+
+export const codeSchema = z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from the email");
+
+export const emailStartSchema = z.object({ email: eduEmailSchema });
+export const emailVerifySchema = z.object({ email: eduEmailSchema, code: codeSchema });
+
+export const adminStartSchema = z.object({ email: emailSchema });
+export const adminVerifySchema = z.object({ email: emailSchema, code: codeSchema });
+
+/** Creating a profile needs the token from verifying a .edu email (POST /api/auth/email/verify). */
+export const newProfileSchema = profileSchema.extend({
+  emailToken: z.string({ message: "Verify your school email first" }).min(1).max(1000),
+});

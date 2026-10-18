@@ -3,15 +3,18 @@ import { handle, json } from "@/lib/api";
 import { hashKey, newDeviceKey } from "@/lib/auth";
 import { broadcastLobby } from "@/lib/events";
 import { lingerMs } from "@/lib/time";
-import { profileSchema } from "@/lib/schemas";
+import { newProfileSchema } from "@/lib/schemas";
 import { getStore } from "@/lib/store";
+import { verifiedEmail } from "@/lib/verified-email";
 
 export const POST = handle(async (req: Request) => {
-  const input = profileSchema.parse(await req.json());
+  const { emailToken, ...input } = newProfileSchema.parse(await req.json());
+  const email = verifiedEmail(emailToken);
+  if (!email) return json({ error: "Your email verification expired. Go back and verify your school email again." }, { status: 400 });
   const store = getStore();
   const id = randomUUID();
   const deviceKey = newDeviceKey();
-  const user = await store.createUser(input, id, hashKey(deviceKey));
+  const user = await store.createUser(input, id, hashKey(deviceKey), email);
 
   // Demo touch: a couple of seeded classmates say hi, so the requests bell has something in it.
   if (process.env.DEMO_WELCOME_REQUESTS !== "0") {

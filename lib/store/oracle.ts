@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import oracledb from "oracledb";
 import { query, withConnection } from "../db";
 import { joinNotes, notesExpiry } from "../notes";
-import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, Interest, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, Interest, Report, ReportCategory, ReportSeverity, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
@@ -36,6 +37,20 @@ type NotesRow = { CONTENT: string | null; VERSION: number; CREATED_AT: Date; UPD
 const NOTES_SELECT = `SELECT content, version, created_at, updated_at, expires_at FROM group_notes WHERE group_id = :g AND expires_at > :now`;
 /** ORA-00001: another request created the same room's notes row first. */
 const isDuplicate = (e: unknown) => String(e).includes("ORA-00001");
+
+type ReportRow = {
+  ID: string;
+  CATEGORY: ReportCategory;
+  SEVERITY: ReportSeverity;
+  SUMMARY: string;
+  REASON: string | null;
+  EXCERPT: string | null;
+  USER_ID: string | null;
+  USER_NAME: string | null;
+  GROUP_NAME: string | null;
+  ITEM_AT: Date | null;
+  CREATED_AT: Date;
+};
 
 const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 
@@ -169,12 +184,12 @@ export const oracleStore: Store = {
     return rows.map((r): Interest => ({ id: r.ID, name: r.NAME, color: r.COLOR }));
   },
 
-  async createUser(input, id, deviceKeyHash) {
+  async createUser(input, id, deviceKeyHash, email) {
     await withConnection(async (conn) => {
       await conn.execute(
-        `INSERT INTO users (id, device_key_hash, name, linkedin, bio, avatar_url)
-         VALUES (:id, :hash, :name, :linkedin, :bio, :avatar)`,
-        { id, hash: deviceKeyHash, name: input.name, linkedin: input.linkedin, bio: input.bio, avatar: input.avatarUrl ?? null },
+        `INSERT INTO users (id, device_key_hash, name, linkedin, bio, avatar_url, email)
+         VALUES (:id, :hash, :name, :linkedin, :bio, :avatar, :email)`,
+        { id, hash: deviceKeyHash, name: input.name, linkedin: input.linkedin, bio: input.bio, avatar: input.avatarUrl ?? null, email },
       );
       await setInterests(conn, id, input.interestIds);
       await conn.commit();
@@ -409,6 +424,117 @@ export const oracleStore: Store = {
       expired.push({ group, chat }); // group_notes goes with it (ON DELETE CASCADE)
     }
     return expired;
+  },
+
+  async saveEmailCode(key, codeHash, expiresAt) {
+    await withConnection(async (conn) => {
+      await conn.execute(
+        `MERGE INTO email_codes t USING (SELECT :k AS k FROM dual) s ON (t.code_key = s.k)
+          WHEN MATCHED THEN UPDATE SET t.code_hash = :h, t.attempts = 0, t.expires_at = :exp
+          WHEN NOT MATCHED THEN INSERT (code_key, code_hash, expires_at) VALUES (s.k, :h, :exp)`,
+        { k: key, h: codeHash, exp: expiresAt },
+      );
+      await conn.commit();
+    });
+  },
+
+  async checkEmailCode(key, codeHash, now, maxAttempts) {
+    return withConnection(async (conn) => {
+      const res = await conn.execute<{ CODE_HASH: string; ATTEMPTS: number; EXPIRES_AT: Date }>(
+        `SELECT code_hash, attempts, expires_at FROM email_codes WHERE code_key = :k FOR UPDATE`,
+        { k: key },
+      );
+      const row = res.rows?.[0];
+      const remove = () => conn.execute(`DELETE FROM email_codes WHERE code_key = :k`, { k: key });
+      let result: "ok" | "wrong" | "missing";
+      if (!row || new Date(row.EXPIRES_AT) <= now) {
+        if (row) await remove();
+        result = "missing";
+      } else if (row.CODE_HASH === codeHash) {
+        await remove();
+        result = "ok";
+      } else {
+        if (row.ATTEMPTS + 1 >= maxAttempts) await remove();
+        else await conn.execute(`UPDATE email_codes SET attempts = attempts + 1 WHERE code_key = :k`, { k: key });
+        result = "wrong";
+      }
+      await conn.commit();
+      return result;
+    });
+  },
+
+  async addReports(reports, now) {
+    if (!reports.length) return 0;
+    return withConnection(async (conn) => {
+      // batchErrors: rows whose report_key already exists fail alone (ORA-00001); the rest go in.
+      const res = await conn.executeMany(
+        `INSERT INTO moderation_reports
+           (id, report_key, category, severity, summary, reason, excerpt, user_id, user_name, group_name, item_at, created_at)
+         VALUES (:id, :k, :category, :severity, :summary, :reason, :excerpt, :userId, :userName, :groupName, :itemAt, :now)`,
+        reports.map((r) => ({
+          id: randomUUID(),
+          k: r.key,
+          category: r.category,
+          severity: r.severity,
+          summary: r.summary,
+          reason: r.reason,
+          excerpt: r.excerpt,
+          userId: r.userId,
+          userName: r.userName,
+          groupName: r.groupName,
+          itemAt: r.itemAt ? new Date(r.itemAt) : null,
+          now,
+        })),
+        {
+          batchErrors: true,
+          bindDefs: {
+            id: { type: oracledb.STRING, maxSize: 36 },
+            k: { type: oracledb.STRING, maxSize: 64 },
+            category: { type: oracledb.STRING, maxSize: 10 },
+            severity: { type: oracledb.STRING, maxSize: 6 },
+            summary: { type: oracledb.STRING, maxSize: 800 },
+            reason: { type: oracledb.STRING, maxSize: 2400 },
+            excerpt: { type: oracledb.STRING, maxSize: 4000 },
+            userId: { type: oracledb.STRING, maxSize: 36 },
+            userName: { type: oracledb.STRING, maxSize: 320 },
+            groupName: { type: oracledb.STRING, maxSize: 240 },
+            itemAt: { type: oracledb.DB_TYPE_TIMESTAMP_TZ },
+            now: { type: oracledb.DB_TYPE_TIMESTAMP_TZ },
+          },
+        },
+      );
+      const failed = res.batchErrors ?? [];
+      const other = failed.find((e) => e.errorNum !== 1);
+      if (other) {
+        await conn.rollback();
+        throw other;
+      }
+      await conn.commit();
+      return reports.length - failed.length;
+    });
+  },
+
+  async listReports(limit) {
+    const rows = await query<ReportRow>(
+      `SELECT id, category, severity, summary, reason, excerpt, user_id, user_name, group_name, item_at, created_at
+         FROM moderation_reports ORDER BY created_at DESC FETCH FIRST :n ROWS ONLY`,
+      { n: limit },
+    );
+    return rows.map(
+      (r): Report => ({
+        id: r.ID,
+        category: r.CATEGORY,
+        severity: r.SEVERITY,
+        summary: r.SUMMARY,
+        reason: r.REASON ?? "",
+        excerpt: r.EXCERPT ?? "",
+        userId: r.USER_ID,
+        userName: r.USER_NAME,
+        groupName: r.GROUP_NAME,
+        itemAt: iso(r.ITEM_AT),
+        createdAt: iso(r.CREATED_AT)!,
+      }),
+    );
   },
 
   async getFriendState(userId) {

@@ -77,3 +77,29 @@ export type GroupNotes = { content: string; version: number; createdAt: string; 
 export type RoomEvent =
   | { type: "chat"; payload: { hourStart: string; message: ChatMessage } }
   | { type: "notes"; payload: { version: number } };
+
+/** What a moderation report is about: one of the four kinds of text the daily review reads. */
+export type ReportCategory = "chat" | "note" | "username" | "group";
+
+export type ReportSeverity = "low" | "medium" | "high";
+
+/** One flagged item from the daily AI moderation review (lib/moderation). Only admins see these. */
+export type Report = {
+  id: string;
+  category: ReportCategory;
+  severity: ReportSeverity;
+  /** one line for the list */
+  summary: string;
+  /** why the moderator flagged it */
+  reason: string;
+  /** the flagged text itself */
+  excerpt: string;
+  /** who wrote it (chat), who it names (username) or who made it (group); null when unknown */
+  userId: string | null;
+  userName: string | null;
+  /** the room it lives in, for the link; the user's current room for a username */
+  groupName: string | null;
+  /** when the flagged item was written, if known */
+  itemAt: string | null;
+  createdAt: string;
+};

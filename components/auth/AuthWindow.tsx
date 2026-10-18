@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, MonitorSmartphone, RotateCw } from "lucide-react";
+import { CircleCheck, Loader2, MonitorSmartphone, RotateCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/profile/Avatar";
@@ -13,6 +13,8 @@ import type { FriendState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Mode = "login" | "register";
+/** A .edu address that passed its emailed code, and the token POST /api/users wants for it. */
+export type VerifiedEmail = { email: string; token: string };
 type Failure = { kind: "auth" | "network"; message: string };
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -34,6 +36,7 @@ const linkButton =
 export function AuthWindow({
   leaving,
   initialName = "",
+  initialVerified = null,
   onEntered,
   onRegistered,
   onModeChange,
@@ -41,14 +44,16 @@ export function AuthWindow({
   leaving: boolean;
   /** coming back from the welcome page: reopen on the register step with the name kept */
   initialName?: string;
+  initialVerified?: VerifiedEmail | null;
   onEntered: () => void;
-  /** "Create account" hands off to the welcome page */
-  onRegistered: (name: string) => void;
+  /** "Create account" hands off to the welcome page, once the school email is verified */
+  onRegistered: (name: string, verified: VerifiedEmail) => void;
   onModeChange: (mode: Mode) => void;
 }) {
   const { identity, me, signIn } = useMe();
   const [mode, setMode] = useState<Mode>(initialName ? "register" : "login");
   const [name, setName] = useState(initialName);
+  const [verified, setVerified] = useState<VerifiedEmail | null>(initialVerified);
 
   useEffect(() => onModeChange(mode), [mode, onModeChange]);
 
@@ -92,8 +97,10 @@ export function AuthWindow({
             <RegisterPanel
               name={name}
               setName={setName}
+              verified={verified}
+              setVerified={setVerified}
               replacing={identity ? (me?.name ?? "your saved profile") : null}
-              onNext={() => onRegistered(name.trim())}
+              onNext={(v) => onRegistered(name.trim(), v)}
               onLogin={() => setMode("login")}
             />
           )}
@@ -225,34 +232,97 @@ function LoginPanel({
   );
 }
 
+const fieldClass =
+  "h-10 rounded-[10px] border-[#cdbba4] bg-[#fffaf0] px-3 text-sm text-[#3a2a20] placeholder:text-[#a89886] focus-visible:border-[#a8553a] focus-visible:ring-2 focus-visible:ring-[#a8553a]/25 dark:bg-[#fffaf0]";
+
+type RegisterErrors = { name?: string; email?: string; code?: string; form?: string };
+
+/** Name and school email, then the 6-digit code emailed to it. Only a verified .edu address moves on. */
 function RegisterPanel({
   name,
   setName,
+  verified,
+  setVerified,
   replacing,
   onNext,
   onLogin,
 }: {
   name: string;
   setName: (name: string) => void;
+  verified: VerifiedEmail | null;
+  setVerified: (verified: VerifiedEmail | null) => void;
   replacing: string | null;
-  onNext: () => void;
+  onNext: (verified: VerifiedEmail) => void;
   onLogin: () => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState(verified?.email ?? "");
+  /** the address the current code was sent to; null until "Send code" */
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<RegisterErrors>({});
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return setError("Enter the name people will see on the map.");
-    setError(null);
-    onNext();
+  const fail = (err: unknown, field: keyof RegisterErrors) =>
+    setErrors({ [isNetworkError(err) ? "form" : field]: isNetworkError(err) ? NETWORK_MESSAGE : (err as Error).message });
+
+  const sendCode = async () => {
+    const address = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.edu$/.test(address)) return setErrors({ email: "Use your school email (ending in .edu)." });
+    setBusy(true);
+    setErrors({});
+    try {
+      await api("/api/auth/email/start", { body: { email: address }, identity: null });
+      setSentTo(address);
+      setCode("");
+    } catch (err) {
+      fail(err, "email");
+    }
+    setBusy(false);
   };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (!name.trim()) return setErrors({ name: "Enter the name people will see on the map." });
+    if (verified) return onNext(verified);
+    if (!sentTo) return sendCode();
+    if (!/^\d{6}$/.test(code.trim())) return setErrors({ code: "Enter the 6-digit code from the email." });
+    setBusy(true);
+    setErrors({});
+    try {
+      const { emailToken } = await api<{ emailToken: string }>("/api/auth/email/verify", {
+        body: { email: sentTo, code: code.trim() },
+        identity: null,
+      });
+      const next = { email: sentTo, token: emailToken };
+      setVerified(next);
+      onNext(next);
+    } catch (err) {
+      fail(err, "code");
+      setBusy(false);
+    }
+  };
+
+  const changeEmail = () => {
+    setVerified(null);
+    setSentTo(null);
+    setCode("");
+    setErrors({});
+  };
+
+  const errorText = (id: string, message?: string) =>
+    message && (
+      <p id={id} role="alert" className="text-xs text-[#a32d2d]">
+        {message}
+      </p>
+    );
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-[18px]">
       <Brand heading="Become a node" subtitle="Create your account to join the network." />
 
       <DemoNote>
-        Your demo profile lives in this browser. Next, you&apos;ll add a few details so Orbit can place you near your people.
+        Orbit is for students: we&apos;ll email a code to your school address to confirm it. Your profile then lives in this browser.
       </DemoNote>
 
       <div className="space-y-1.5">
@@ -266,17 +336,78 @@ function RegisterPanel({
           maxLength={80}
           autoComplete="name"
           autoFocus
-          aria-invalid={!!error}
-          aria-describedby={error ? "auth-name-error" : undefined}
-          className="h-10 rounded-[10px] border-[#cdbba4] bg-[#fffaf0] px-3 text-sm text-[#3a2a20] placeholder:text-[#a89886] focus-visible:border-[#a8553a] focus-visible:ring-2 focus-visible:ring-[#a8553a]/25 dark:bg-[#fffaf0]"
+          aria-invalid={!!errors.name}
+          aria-describedby={errors.name ? "auth-name-error" : undefined}
+          className={fieldClass}
           placeholder="Maya Chen"
         />
-        {error && (
-          <p id="auth-name-error" role="alert" className="text-xs text-[#a32d2d]">
-            {error}
-          </p>
-        )}
+        {errorText("auth-name-error", errors.name)}
       </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="auth-email" className="text-[13px] font-normal text-[#7a6552]">
+          School email
+        </Label>
+        {verified || sentTo ? (
+          <div className="flex h-10 items-center justify-between gap-2 rounded-[10px] border border-[#cdbba4] bg-[#fffaf0] px-3 text-sm">
+            <span className="flex min-w-0 items-center gap-1.5 text-[#3a2a20]">
+              {verified && <CircleCheck className="size-4 shrink-0 text-[#5d7a4a]" aria-label="Verified" />}
+              <span className="truncate">{verified?.email ?? sentTo}</span>
+            </span>
+            <button type="button" onClick={changeEmail} className={cn(linkButton, "shrink-0 text-xs")}>
+              Change
+            </button>
+          </div>
+        ) : (
+          <Input
+            id="auth-email"
+            type="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            maxLength={254}
+            autoComplete="email"
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "auth-email-error" : undefined}
+            className={fieldClass}
+            placeholder="maya.chen@vanderbilt.edu"
+          />
+        )}
+        {errorText("auth-email-error", errors.email)}
+      </div>
+
+      {sentTo && !verified && (
+        <div className="space-y-1.5">
+          <Label htmlFor="auth-code" className="text-[13px] font-normal text-[#7a6552]">
+            6-digit code
+          </Label>
+          <Input
+            id="auth-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            aria-invalid={!!errors.code}
+            aria-describedby="auth-code-hint"
+            className={cn(fieldClass, "tracking-[0.3em]")}
+            placeholder="123456"
+          />
+          {errorText("auth-code-error", errors.code)}
+          <p id="auth-code-hint" className="text-xs text-[#7a6552]">
+            Sent to {sentTo}. It expires in 10 minutes.{" "}
+            <button type="button" onClick={sendCode} disabled={busy} className={cn(linkButton, "text-xs")}>
+              Send a new code
+            </button>
+          </p>
+        </div>
+      )}
+
+      {errors.form && (
+        <p role="alert" className="rounded-[10px] border border-[#f09595] bg-[#fcebeb] px-3.5 py-2.5 text-sm text-[#a32d2d]">
+          {errors.form}
+        </p>
+      )}
 
       {replacing && (
         <p className="text-xs text-[#8f5f22]">
@@ -284,8 +415,9 @@ function RegisterPanel({
         </p>
       )}
 
-      <button type="submit" className={primaryButton}>
-        Create account
+      <button type="submit" disabled={busy} aria-busy={busy} className={primaryButton}>
+        {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
+        {verified ? "Create account" : sentTo ? "Verify and create account" : "Email me a code"}
       </button>
 
       <p className="text-center text-[13px] text-[#7a6552]">
