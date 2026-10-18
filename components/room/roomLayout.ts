@@ -1,48 +1,26 @@
+import type { ScreenCircle } from "@/components/map/SocialGraph";
+
 /**
- * Stable seats inside the room bubble, in unit-disk coordinates. You sit in the middle; everyone else
- * takes the first free seat in a spread-out order and keeps it while they stay, so nobody shuffles
- * when someone else joins, leaves or starts speaking.
+ * Where the room's bubble sits on screen. The room is a true zoom into the map: the map's camera is framed so
+ * the bubble fills this circle, and the room draws everyone exactly where the map does.
  */
-export type Seat = { x: number; y: number; angle: number };
 
-const ring = (count: number, radius: number, offsetDeg: number, order: number[]): Seat[] =>
-  order.map((k) => {
-    const angle = ((offsetDeg + (k * 360) / count) * Math.PI) / 180;
-    // a touch of deterministic wobble so the layout reads as a graph, not a clock face
-    const r = radius + (((k * 37) % 7) - 3) * 0.012;
-    return { x: Math.cos(angle) * r, y: Math.sin(angle) * r, angle };
-  });
+export const HEADER_H = 68; // RoomHeader's h-[68px]
+export const DOCK_H = 96; // RoomView's dock row
+const INSET = 18;
 
-const CENTER: Seat = { x: 0, y: 0, angle: Math.PI / 2 };
-const INNER = ring(6, 0.5, -90, [0, 3, 1, 4, 2, 5]);
-const OUTER = ring(12, 0.88, -75, [0, 6, 3, 9, 1, 7, 4, 10, 2, 8, 5, 11]);
-const EDGE = ring(18, 1, -85, [0, 9, 4, 13, 2, 11, 7, 16, 5, 14, 1, 10, 6, 15, 3, 12, 8, 17]);
-
-/** Seat 0 is reserved for you; the rest fill inner ring first, alternating sides. */
-export const SEATS: Seat[] = [CENTER, ...INNER, ...OUTER, ...EDGE];
-
-/** Assigns seats, keeping existing assignments. Mutates and returns `seats`. */
-export function assignSeats(seats: Map<string, number>, ids: string[], meId: string | null) {
-  const present = new Set(ids);
-  for (const id of [...seats.keys()]) if (!present.has(id)) seats.delete(id);
-  const taken = new Set(seats.values());
-  if (meId && present.has(meId) && !seats.has(meId)) {
-    seats.set(meId, 0);
-    taken.add(0);
-  }
-  for (const id of ids) {
-    if (seats.has(id)) continue;
-    let seat = 1;
-    while (taken.has(seat)) seat++;
-    seats.set(id, seat);
-    taken.add(seat);
-  }
-  return seats;
+/** The circle the bubble fills inside a stage of this size (stage-local pixels). */
+export function stageCircle(w: number, h: number): ScreenCircle {
+  return { x: w / 2, y: h / 2, r: Math.max(60, Math.min(w, h) / 2 - INSET) };
 }
 
-/** Seats past the prepared ones (rooms over ~37 people) spiral outward instead of overlapping. */
-export function seatAt(index: number): Seat {
-  if (index < SEATS.length) return SEATS[index];
-  const angle = index * 2.399963; // golden angle
-  return { x: Math.cos(angle) * 0.95, y: Math.sin(angle) * 0.95, angle };
+/**
+ * Best guess at the stage's circle before the room has mounted (viewport pixels), so the zoom in from the map
+ * heads straight for it. Once the stage measures itself it re-frames the camera; the two agree closely.
+ */
+export function expectedStageCircle(chatWidth: number): ScreenCircle {
+  const w = window.innerWidth - chatWidth;
+  const h = window.innerHeight - HEADER_H - DOCK_H;
+  const c = stageCircle(w, h);
+  return { x: c.x, y: c.y + HEADER_H, r: c.r };
 }

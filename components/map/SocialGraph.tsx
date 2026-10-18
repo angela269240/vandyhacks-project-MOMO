@@ -8,8 +8,9 @@ import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-for
 import { HUES, initials, mixHex, rgba, type ToneKey } from "@/lib/colors";
 import { assignGroupHues, groupHue, groupHues } from "@/lib/client/groupHues";
 import { scene, sceneEvents } from "@/lib/client/scene";
+import type { SearchMatches } from "@/lib/client/filters";
 import type { Graph, GraphGroup, GraphUser } from "@/lib/types";
-import { bob, BUBBLE_PADDING, clusterRadius, computeLayout, ringPoint, type Layout } from "./layout";
+import { bob, BUBBLE_PADDING, clusterRadius, computeLayout, LAYOUT_GAP, ringPoint, type Layout } from "./layout";
 
 /** A palette key plus where it's fading in from, so a change of bubble crossfades instead of snapping. */
 type Tone = { key: ToneKey; from: ToneKey; at: number };
@@ -44,6 +45,13 @@ type NodeData = {
 type LinkData = { key: string; source: string | NodeData; target: string | NodeData; bornAt: number };
 type Camera = { x: number; y: number; k: number };
 type Pt = [number, number];
+/** a circle in screen pixels (viewport coordinates) */
+export type ScreenCircle = { x: number; y: number; r: number };
+/** what the room screen needs to draw a bubble exactly where (and as big as) the map draws it */
+export type RoomSnapshot = {
+  bubble: ScreenCircle | null;
+  people: Map<string, { x: number; y: number; r: number; color: string }>;
+};
 
 export type MapApi = {
   zoomToGroup: (groupId: number, ms?: number) => void;
@@ -57,6 +65,10 @@ export type MapApi = {
   focusGroup: (groupId: number | null) => void;
   /** room scroll-out scrub: 0 = room zoom, 1 = about to exit */
   scrub: (progress: number) => void;
+  /** move the camera so this bubble fills `target` on screen (the room stage), so the room is a true zoom */
+  frameGroup: (groupId: number, target: ScreenCircle, ms?: number) => void;
+  /** where the map is drawing this bubble and these people right now, in screen pixels */
+  roomSnapshot: (groupId: number, ids: string[]) => RoomSnapshot;
 };
 
 type Props = {
@@ -68,6 +80,8 @@ type Props = {
   focusedGroupIds: Set<number>;
   /** degrees-of-connection filter; null shows everyone */
   visibleUserIds: Set<string> | null;
+  /** search matches to highlight and pull toward the middle; null when not searching */
+  search: SearchMatches | null;
   /** set while inside a room: the map becomes the room (no pan/zoom, others faded, camera follows the bubble) */
   roomGroupId: number | null;
   cardRef: React.RefObject<HTMLDivElement | null>;
@@ -79,10 +93,15 @@ type Props = {
   onReady: (api: MapApi) => void;
 };
 
-const NODE_R = 28;
+const NODE_R = 42;
+/** collision radius, kept from the old 28px nodes so the bigger circles still fit the same bubbles */
+const COLLIDE_R = 60;
+/** how hard people are pulled back into their bubble, per tick, before scaling by the sim's heat */
+const ANCHOR_EASE = 0.3;
 const UNFOCUSED_SCALE = 0.55;
 const ARRIVED = 60; // members farther than this past their bubble's edge are still travelling
-const DOUBLE_CLICK_MS = 260;
+/** how long a click on a bubble waits for a second one (Windows' default double-click window is 500ms) */
+const DOUBLE_CLICK_MS = 380;
 const TONE_FADE_MS = 700;
 /**
  * Edge opacity, per theme. Edges inside a bubble stay faint so dense groups don't turn into dark mats;
@@ -182,7 +201,13 @@ export default function SocialGraph(props: Props) {
     vivid: null as Set<string> | null,
     ringed: null as Set<string> | null,
     fade: 0,
+    /** a search with at least one match is on: matches stand out, everything else dims */
+    searching: false,
   });
+  const searchHit = (n: NodeData) => {
+    const s = propsRef.current.search;
+    return !!s && (s.userIds.has(n.id) || (n.user.groupId !== null && s.groupIds.has(n.user.groupId)));
+  };
 
   const isVisible = (n: NodeData) => {
     const v = propsRef.current.visibleUserIds;
@@ -205,6 +230,17 @@ export default function SocialGraph(props: Props) {
     (groupId: number) => {
       const scale = propsRef.current.focusedGroupIds.has(groupId) ? 1 : UNFOCUSED_SCALE;
       return Math.max(0, bubbleRadius(groupId) - (BUBBLE_PADDING + NODE_R) * scale);
+    },
+    [bubbleRadius],
+  );
+
+  /** where the bubble is drawn right now in world space (or where it will be, before its first frame) */
+  const bubbleWorld = useCallback(
+    (groupId: number) => {
+      const drawn = drawnBubble.current.get(groupId);
+      if (drawn) return { ...drawn };
+      const a = layout.current.anchors.get(groupId);
+      return a ? { x: a.x, y: a.y, r: bubbleRadius(groupId) } : null;
     },
     [bubbleRadius],
   );
@@ -240,7 +276,7 @@ export default function SocialGraph(props: Props) {
   const applyCollide = useCallback(() => {
     fgRef.current?.d3Force(
       "collide",
-      forceCollide<NodeData>((n) => (isFocused(n) ? NODE_R * 2.15 : NODE_R * 2.15 * UNFOCUSED_SCALE)) as never,
+      forceCollide<NodeData>((n) => (isFocused(n) ? COLLIDE_R : COLLIDE_R * UNFOCUSED_SCALE)) as never,
     );
   }, []);  
 
@@ -252,15 +288,25 @@ export default function SocialGraph(props: Props) {
       (alpha: number) => {
         // Floored so people crossing the map to a bubble's new spot (e.g. after joining a group reshuffles the
         // layout) still arrive once the sim cools, instead of stalling against other bubbles mid-way.
-        const pull = 0.08 * Math.max(alpha, 0.12);
+        const pull = ANCHOR_EASE * Math.max(alpha, 0.12);
+        const hits = propsRef.current.search?.userIds;
+        const view = hits?.size ? fgRef.current?.centerAt() : undefined;
         for (const n of anchored) {
           if (n.fx !== undefined) continue;
-          const t = targetFor(n);
-          const dx = t.x - (n.x ?? 0);
-          const dy = t.y - (n.y ?? 0);
+          let t = targetFor(n);
           // Bubble members float freely inside their bubble (so a bigger group spreads out and fills a bigger one);
           // only the part of the distance beyond that free zone is pulled in.
-          const free = n.user.groupId === null ? 0 : memberSpread(n.user.groupId);
+          let free = n.user.groupId === null ? 0 : memberSpread(n.user.groupId);
+          if (view && n.user.groupId !== null && hits!.has(n.id)) {
+            // A search match drifts to the spot in its bubble nearest the middle of the screen, never past the edge.
+            const ox = view.x - t.x;
+            const oy = view.y - t.y;
+            const reach = Math.min(1, free / Math.max(Math.hypot(ox, oy), 1));
+            t = { x: t.x + ox * reach, y: t.y + oy * reach };
+            free = 0;
+          }
+          const dx = t.x - (n.x ?? 0);
+          const dy = t.y - (n.y ?? 0);
           const d = Math.hypot(dx, dy);
           if (d <= free) continue;
           const k = (pull * (d - free)) / d;
@@ -339,13 +385,40 @@ export default function SocialGraph(props: Props) {
         scrubBase.current ??= fg.zoom();
         fg.zoom(scrubBase.current * (1 - 0.45 * progress), 0);
       },
+      frameGroup: (groupId, target, ms = 500) => {
+        const b = bubbleWorld(groupId);
+        if (!b) return;
+        const k = Math.min(6, Math.max(0.15, target.r / b.r));
+        // the world point that has to sit at the middle of the viewport for the bubble to land on `target`
+        fg.centerAt(b.x - (target.x - size.w / 2) / k, b.y - (target.y - size.h / 2) / k, ms);
+        fg.zoom(k, ms);
+      },
+      roomSnapshot: (groupId, ids) => {
+        const k = fg.zoom();
+        const b = bubbleWorld(groupId);
+        const c = b && fg.graph2ScreenCoords(b.x, b.y);
+        const people = new Map<string, { x: number; y: number; r: number; color: string }>();
+        for (const id of ids) {
+          const n = nodes.get(id);
+          if (!n || n.x === undefined) continue;
+          // the same bob the map draws this frame (renderPos, inlined: it's declared further down)
+          const wobble = bob(n.phase, frame.current.t, motionOK.current);
+          const p = fg.graph2ScreenCoords(n.x + wobble.dx, (n.y ?? 0) + wobble.dy);
+          const r = NODE_R * (isFocused(n) ? 1 : UNFOCUSED_SCALE) * (id === propsRef.current.meId ? 1.3 : 1) * k;
+          people.set(id, { x: p.x, y: p.y, r, color: n.color });
+        }
+        return { bubble: b && c ? { x: c.x, y: c.y, r: b.r * k } : null, people };
+      },
     });
-  }, [size.w, size.h, targetFor, nodes, applyCollide, memberSpread]);
+  }, [size.w, size.h, targetFor, nodes, applyCollide, memberSpread, bubbleWorld]);
 
   // ---- layout: focused bubbles in the middle (mine at the center), the rest in a side strip ----
   const focusKey = [...props.focusedGroupIds].sort((a, b) => a - b).join(",");
   // group ids plus head counts, so the layout makes room when a bubble grows
   const groupKey = props.graph.groups.map((g) => `${g.id}:${props.graph.users.filter((u) => u.groupId === g.id).length}`).join(",");
+  // matched bubbles take the middle; matched people don't move bubbles, so only group matches count here
+  const searchKey = props.search ? [...props.search.groupIds].sort((a, b) => a - b).join(",") : "";
+  const arrangedFor = useRef<string | null>(null);
   useEffect(() => {
     const ids = props.graph.groups.map((g) => g.id);
     const focused = ids.filter((id) => props.focusedGroupIds.has(id));
@@ -353,17 +426,44 @@ export default function SocialGraph(props: Props) {
     const sizes = new Map<number, number>();
     for (const u of props.graph.users) if (u.groupId !== null) sizes.set(u.groupId, (sizes.get(u.groupId) ?? 0) + 1);
     groupSizes.current = sizes;
-    layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE);
-    for (const [id, offset] of groupOffsets.current) {
-      const anchor = layout.current.anchors.get(id);
-      if (anchor) layout.current.anchors.set(id, { x: anchor.x + offset.x, y: anchor.y + offset.y });
+
+    // Joining, entering or leaving a room changes which bubble is "mine" and nudges head counts. Re-centering
+    // on that would send every bubble flying (and fight the room zoom), so keep the current spots as long as
+    // the same bubbles are shown in the same arrangement and none of them now overlap.
+    const arrangement = `${ids.join(",")}|${focusKey}|${searchKey}`;
+    const prev = layout.current;
+    const keep =
+      arrangedFor.current === arrangement &&
+      ids.every((id) => prev.anchors.has(id)) &&
+      focused.every((a, i) =>
+        focused.slice(i + 1).every((b) => {
+          const pa = prev.anchors.get(a)!;
+          const pb = prev.anchors.get(b)!;
+          const need = clusterRadius(sizes.get(a) ?? 1) + clusterRadius(sizes.get(b) ?? 1) + LAYOUT_GAP / 2;
+          return Math.hypot(pa.x - pb.x, pa.y - pb.y) >= need;
+        }),
+      );
+    arrangedFor.current = arrangement;
+    if (!keep) {
+      const priority = props.search ? ids.filter((id) => props.search!.groupIds.has(id)) : [];
+      layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE, priority);
+      for (const [id, offset] of groupOffsets.current) {
+        const anchor = layout.current.anchors.get(id);
+        if (anchor) layout.current.anchors.set(id, { x: anchor.x + offset.x, y: anchor.y + offset.y });
+      }
     }
     // Bubble colors come from the unfiltered layout, so neighbors differ and filters never recolor anything.
     const full = computeLayout(ids, [], props.myGroupId, sizes, UNFOCUSED_SCALE);
     groupHues.set(assignGroupHues(props.graph.groups, full.anchors, groupHues.get()));
     applyCollide();
     fgRef.current?.d3ReheatSimulation();
-  }, [focusKey, groupKey, props.myGroupId, props.meId, applyCollide]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusKey, groupKey, searchKey, props.myGroupId, props.meId, applyCollide]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a new set of matched people needs a push so they drift toward the middle (the sim may have cooled)
+  const searchUserKey = props.search ? [...props.search.userIds].sort().join(",") : "";
+  useEffect(() => {
+    fgRef.current?.d3ReheatSimulation();
+  }, [searchUserKey]);
 
   // ---- sync server graph into persistent node/link objects (keeps positions across updates) ----
   useEffect(() => {
@@ -494,6 +594,8 @@ export default function SocialGraph(props: Props) {
       }
       const fg = focus.current;
       f.fade = fg ? clamp01((t - fg.start) / 400) : 0;
+      const search = propsRef.current.search;
+      f.searching = !!search && search.groupIds.size + search.userIds.size > 0;
 
       const byGroup = new Map<number, NodeData[]>();
       for (const n of nodes.values()) {
@@ -550,13 +652,14 @@ export default function SocialGraph(props: Props) {
 
         const hovered = hoverGroup.current === g.id && !hoverNode.current && roomGroupId === null;
         const isFocus = fg?.groupId === g.id;
-        const alpha = (fg ? (isFocus ? 1 : 1 - f.fade) : 1) * (focusedGroup ? 1 : 0.55);
+        const matched = f.searching && search!.groupIds.has(g.id);
+        const alpha = (fg ? (isFocus ? 1 : 1 - f.fade) : 1) * (focusedGroup ? 1 : 0.55) * (f.searching && !matched ? 0.4 : 1);
         if (alpha <= 0.01) continue;
         const pulseAt = pulses.current.get(g.id);
         const pulse = pulseAt ? clamp01(1 - (t - pulseAt) / 1100) : 0;
         const color = resolve(groupTones.current.get(g.id)!, pal, t);
         // Flat, paper-like tint: a little denser in the middle, a clean edge, no glow.
-        const fillCore = focusedGroup ? (f.light ? 0.15 : 0.13) + (hovered || isFocus ? 0.07 : 0) : 0.07;
+        const fillCore = (focusedGroup ? (f.light ? 0.15 : 0.13) + (hovered || isFocus ? 0.07 : 0) : 0.07) + (matched ? 0.09 : 0);
 
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -567,8 +670,8 @@ export default function SocialGraph(props: Props) {
         grad.addColorStop(1, rgba(color, fillCore * 0.55));
         ctx.fillStyle = grad;
         ctx.fill();
-        ctx.lineWidth = (focusedGroup ? 1.3 + pulse * 2 + (isFocus ? 0.5 : 0) : 1) / Math.max(gs, 0.5);
-        ctx.strokeStyle = rgba(color, (focusedGroup ? 0.5 : 0.3) + (hovered ? 0.25 : 0) + pulse * 0.4 + (isFocus ? 0.2 : 0));
+        ctx.lineWidth = ((focusedGroup ? 1.3 + pulse * 2 + (isFocus ? 0.5 : 0) : 1) + (matched ? 1.7 : 0)) / Math.max(gs, 0.5);
+        ctx.strokeStyle = rgba(color, (focusedGroup ? 0.5 : 0.3) + (hovered ? 0.25 : 0) + pulse * 0.4 + (isFocus ? 0.2 : 0) + (matched ? 0.4 : 0));
         if (!members.length) ctx.setLineDash([6 / gs, 6 / gs]);
         ctx.stroke();
         ctx.restore();
@@ -606,6 +709,8 @@ export default function SocialGraph(props: Props) {
 
     let alpha = focused ? 1 : 0.7;
     if (f.highlight && !f.highlight.has(n.id)) alpha *= 0.35;
+    const hit = f.searching && searchHit(n);
+    if (f.searching && !hit) alpha *= 0.3;
     if (n.user.away) alpha *= 0.5;
     if (focus.current && n.user.groupId !== focus.current.groupId && n.id !== meId) alpha *= 1 - f.fade;
     if (alpha <= 0.01) return;
@@ -692,6 +797,14 @@ export default function SocialGraph(props: Props) {
       ctx.strokeStyle = rgba(n.color, 0.9);
       ctx.stroke();
     }
+    if (hit && propsRef.current.search!.userIds.has(n.id)) {
+      // a matched person: a bold ring in their bubble's color
+      ctx.beginPath();
+      ctx.arc(x, y, r + (isMe ? 13 : 6) / gs, 0, Math.PI * 2);
+      ctx.lineWidth = 3 / gs;
+      ctx.strokeStyle = rgba(n.color, 0.95);
+      ctx.stroke();
+    }
     if (f.ringed?.has(n.id)) {
       ctx.beginPath();
       ctx.arc(x, y, r + (isMe ? 11 : 5) / gs, 0, Math.PI * 2);
@@ -727,6 +840,7 @@ export default function SocialGraph(props: Props) {
     let alpha = f.highlight ? (vivid ? A.highlight : A.faded) : sameGroup ? A.intra : A.inter;
     if (s.user.away || e.user.away) alpha *= 0.6;
     if (!isFocused(s) || !isFocused(e)) alpha *= 0.5;
+    if (f.searching && !searchHit(s) && !searchHit(e)) alpha *= 0.35;
     if (focus.current && (s.user.groupId !== focus.current.groupId || e.user.groupId !== focus.current.groupId)) {
       alpha *= 1 - f.fade;
     }
@@ -758,20 +872,8 @@ export default function SocialGraph(props: Props) {
   const onRenderFramePost = useCallback(() => {
     const fg = fgRef.current;
     if (!fg) return;
-    const { selectedId, cardRef, roomGroupId } = propsRef.current;
-
-    // In a room the camera gently follows the bubble (it may still be settling into the center).
-    if (roomGroupId !== null && scrubBase.current === null) {
-      const members = [...nodes.values()].filter((n) => n.user.groupId === roomGroupId && isVisible(n));
-      if (members.length) {
-        const cx = members.reduce((s, n) => s + (n.x ?? 0), 0) / members.length;
-        const cy = members.reduce((s, n) => s + (n.y ?? 0), 0) / members.length;
-        const c = fg.centerAt();
-        const dx = cx - c.x;
-        const dy = cy - c.y;
-        if (Math.hypot(dx, dy) > 0.5) fg.centerAt(c.x + dx * 0.06, c.y + dy * 0.06);
-      }
-    }
+    // In a room the room stage frames the camera (frameGroup), so the map never drifts under it.
+    const { selectedId, cardRef } = propsRef.current;
 
     // Keep the profile card glued to its (bobbing, panning) node.
     const card = cardRef.current;
@@ -1007,6 +1109,9 @@ export default function SocialGraph(props: Props) {
           }}
           linkCanvasObject={linkCanvasObject}
           linkCanvasObjectMode={() => "replace"}
+          // Lines aren't clickable. Otherwise force-graph treats a click on a line crossing a bubble as a
+          // "link click" and the bubble's click (enter) and double-click (bookmark) never fire.
+          linkPointerAreaPaint={() => {}}
           onRenderFramePre={onRenderFramePre}
           onRenderFramePost={onRenderFramePost}
           autoPauseRedraw={false}

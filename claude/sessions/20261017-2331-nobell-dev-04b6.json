@@ -1,0 +1,56 @@
+{
+  "id": "20261017-2331-nobell-dev-04b6",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "75920b4",
+  "started": "2026-10-18T04:31:44.545Z",
+  "ended": "2026-10-18T05:24:40.933Z",
+  "status": "done",
+  "goal": "Map polish: search highlight+centering, fix double-click bookmark, 1.5x nodes, faster easing, true zoom into/out of rooms, no jerk on exit",
+  "summary": "Search no longer hides bubbles or refits the camera: lib/client/filters.ts searchMatches() returns matched group ids (name/tag/bookmark) and user ids (name); SocialGraph highlights them (ring on people, bolder bubble, everything else dimmed), computeLayout(priority) puts matched bubbles in the middle, and the anchor force pulls matched people to the point in their bubble nearest the screen center. Double-click to bookmark (and plain click to enter) was broken because force-graph hit-tests links and swallowed clicks that landed on a line crossing a bubble; links are now unclickable (linkPointerAreaPaint no-op) and the double-click window is 380ms. Nodes are 1.5x (NODE_R 42) with collision radius kept at 60 so bubbles keep their size; anchor pull is ANCHOR_EASE 0.3 (was 0.08). Rooms are now a true zoom: RoomStage draws every person, line and the bubble from MapApi.roomSnapshot() (the map's live screen positions/radii) and frames the map camera onto its own circle with MapApi.frameGroup(); entering zooms straight to roomLayout.expectedStageCircle(); seats, the stage's own bob and the clip-circle/scale reveal are gone; only the backdrop and chrome fade; people wear the bubble hue as on the map; scroll-out drives MapApi.scrub (real camera zoom). Exit jerk fixed: the map is no longer paused/reheated around rooms, the layout keeps its anchors when only my bubble/head counts change, and MapScene no longer refits 700ms after leaving a room.",
+  "claims": [
+    "components/map/**",
+    "components/room/**",
+    "lib/client/filters.ts"
+  ],
+  "files_touched": [
+    "components/map/MapScene.tsx",
+    "components/map/SocialGraph.tsx",
+    "components/map/layout.ts",
+    "components/room/RoomStage.tsx",
+    "components/room/RoomView.tsx",
+    "components/room/roomLayout.ts",
+    "lib/client/filters.ts"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    "Search highlights instead of filtering: passesSearch() was removed; chips and the degrees slider still filter.",
+    "Collision radius stays at 60 (the old 28px node * 2.15) so 1.5x nodes fit the same clusterRadius bubbles instead of every bubble growing.",
+    "The room reads positions from the map every frame rather than computing its own layout, so alignment holds through any camera move (enter, chat opening, scroll-out scrub).",
+    "The map is no longer paused while a room is open (RoomView stopped emitting map-pause): the room needs live positions and force-graph's camera tweens only advance while it renders. The overlay's backdrop-blur was dropped since the backdrop is opaque anyway.",
+    "Layout keeps the previous anchors when the shown bubbles, focus set and search matches are unchanged and no pair now overlaps (LAYOUT_GAP/2 slack); this is what stops the reshuffle when entering/leaving a room changes myGroupId.",
+    "Room members are drawn in the room's hue (as the map draws them) instead of identityColor, so zooming doesn't recolor anyone."
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "pass: human tried the changes on localhost and confirmed they work. Earlier agent checks in an isolated worktree (in-memory world): double-click bookmark, search highlight/centering without camera moves, room stage positions/radii/bubble matching the map exactly, no reshuffle after Leave."
+  },
+  "next_steps": [
+    "Open a PR from nobell/dev to main.",
+    "Remove the now-unused map-pause/map-resume events (lib/client/scene.ts declares them, MapScene listens, nothing emits).",
+    "If the room bubble is off by a few px on entry before settling, tune HEADER_H/DOCK_H in components/room/roomLayout.ts."
+  ],
+  "open_questions": [
+    "Matched bubbles take the center slot, which moves your own bubble off-center while searching. Is that the intended 'move them towards the middle'?"
+  ],
+  "blockers": [],
+  "conflict_notes": [
+    "Branch `color` (session 20261017-2000-color-c0l0, paused, uncommitted) claims components/map/** and components/room/**. This branch rewrites RoomStage.tsx and RoomView's reveal, and reworks much of SocialGraph.tsx; expect conflicts there. Keep this branch's geometry/camera logic and take color's palette/hue changes."
+  ]
+}

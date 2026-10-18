@@ -17,12 +17,13 @@ import { EditProfileSheet } from "@/components/profile/ProfileDialogs";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { MinimizedRoomWidget } from "@/components/room/MinimizedRoomWidget";
 import { useRoomConnection } from "@/components/room/RoomConnection";
+import { expectedStageCircle } from "@/components/room/roomLayout";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Button } from "@/components/ui/button";
 import { refreshGraph, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
-import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
+import { buildChips, type ChipState, passesChips, searchMatches, withinDegrees } from "@/lib/client/filters";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import { identityColor } from "@/lib/colors";
 import type { Group, GraphGroup, GraphUser } from "@/lib/types";
@@ -44,7 +45,7 @@ export function MapScene() {
   const roomName = roomNameFrom(pathname);
   const { data: graph, isLoading } = useGraph();
   const { identity, me, friends } = useMe();
-  const { session } = useRoomConnection();
+  const { session, chatOpen } = useRoomConnection();
   const { mutate } = useSWRConfig();
 
   const apiRef = useRef<MapApi | null>(null);
@@ -77,7 +78,7 @@ export function MapScene() {
   const focusedGroupIds = useMemo(() => {
     const out = new Set<number>();
     for (const g of graph?.groups ?? []) {
-      if (!passesChips(g, chips, chipStates) || !passesSearch(g, query, bookmarks, graph!.users)) continue;
+      if (!passesChips(g, chips, chipStates)) continue;
       if (visibleUserIds && g.id !== myGroupId) {
         const hasVisible = graph!.users.some((u) => u.groupId === g.id && visibleUserIds.has(u.id));
         if (!hasVisible) continue;
@@ -86,7 +87,12 @@ export function MapScene() {
     }
     if (roomGroupId !== null) out.add(roomGroupId);
     return out;
-  }, [graph, chips, chipStates, query, bookmarks, visibleUserIds, myGroupId, roomGroupId]);
+  }, [graph, chips, chipStates, visibleUserIds, myGroupId, roomGroupId]);
+  // Search only highlights and pulls matches toward the middle; it never hides bubbles or moves the camera.
+  const search = useMemo(
+    () => (graph ? searchMatches(query, graph.groups, graph.users, bookmarks) : null),
+    [graph, query, bookmarks],
+  );
 
   useEffect(() => {
     const offPause = sceneEvents.on("map-pause", () => apiRef.current?.pause());
@@ -120,9 +126,13 @@ export function MapScene() {
   }, [graph, roomGroupId]);
 
   // Refit when the focus set changes (filters, bookmarks, degrees), once the layout has had a moment to move.
+  // Only a real change of filters counts: coming back out of a room restores the camera you had, and a second
+  // refit right after it was the jerk on exit.
   const focusKey = [...focusedGroupIds].sort((a, b) => a - b).join(",");
+  const fittedFor = useRef(focusKey);
   useEffect(() => {
-    if (!didInitialFit.current || roomName) return;
+    if (!didInitialFit.current || roomName || fittedFor.current === focusKey) return;
+    fittedFor.current = focusKey;
     const t = setTimeout(() => apiRef.current?.fitFocused(800), 700);
     return () => clearTimeout(t);
   }, [focusKey, roomName]);
@@ -153,7 +163,9 @@ export function MapScene() {
     if (api) {
       scene.cameraBeforeRoom = api.getCamera();
       api.focusGroup(group.id);
-      api.zoomToGroup(group.id, 600);
+      // Zoom straight to where the room will draw this bubble, so the room is the same picture, just closer.
+      const chatWidth = chatOpen && window.innerWidth >= 768 ? (window.innerWidth >= 1180 ? 352 : 312) : 0;
+      api.frameGroup(group.id, expectedStageCircle(chatWidth), 600);
     }
     setTimeout(() => router.push(roomPath(group.name)), 450);
   };
@@ -185,6 +197,7 @@ export function MapScene() {
             selectedId={onMap ? selectedId : null}
             focusedGroupIds={focusedGroupIds}
             visibleUserIds={visibleUserIds}
+            search={onMap ? search : null}
             roomGroupId={roomGroupId}
             cardRef={cardRef}
             onReady={onReady}

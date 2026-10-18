@@ -2,7 +2,7 @@
 
 import { RoomContext } from "@livekit/components-react";
 import { Loader2, RotateCw, UserPlus, WifiOff } from "lucide-react";
-import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react";
+import { AnimatePresence, animate, motion, useMotionValue } from "motion/react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,9 +14,9 @@ import { useMe } from "@/hooks/useMe";
 import { useRoomFriendships } from "@/hooks/useRoomFriendships";
 import { useRoomPresence } from "@/hooks/useRoomPresence";
 import { roomUIState } from "@/hooks/useRoomUIState";
-import { identityColor, hueVar } from "@/lib/colors";
+import { hueVar } from "@/lib/colors";
 import { useGroupColor } from "@/lib/client/groupHues";
-import { sceneEvents } from "@/lib/client/scene";
+import { scene, sceneEvents } from "@/lib/client/scene";
 import type { Group, GraphUser } from "@/lib/types";
 import { ChatPanel } from "./ChatPanel";
 import { ParticipantCarousel } from "./ParticipantCarousel";
@@ -94,11 +94,14 @@ export function RoomView() {
     () => new Set([...friends.friends, ...(meId ? (friendsOf.get(meId) ?? []) : [])]),
     [friends.friends, friendsOf, meId],
   );
+  const roomGroup = group ?? graph?.groups.find((g) => sameRoom(g.name, name)) ?? null;
+  const color = roomGroup ? groupColor(roomGroup) : hueVar("stone");
   const members = useMemo<StageMember[]>(
     () =>
       present.map((u) => ({
         user: u,
-        color: identityColor(u),
+        // the hue of the bubble, as the map draws them, so zooming in doesn't recolor anyone
+        color,
         isMe: u.id === meId,
         isFriend: u.id !== meId && myFriends.has(u.id),
         mic:
@@ -116,7 +119,7 @@ export function RoomView() {
         speaking: voice.speaking.has(u.id),
         sharing: voice.shares.some((s) => s.ownerId === u.id),
       })),
-    [present, meId, myFriends, voice],
+    [present, meId, myFriends, voice, color],
   );
 
   const share = voice.shares[0] ?? null;
@@ -129,36 +132,25 @@ export function RoomView() {
     shareCount: voice.shares.length,
     memberCount: members.length,
   });
-  const roomGroup = group ?? graph?.groups.find((g) => sameRoom(g.name, name)) ?? null;
-  const color = roomGroup ? groupColor(roomGroup) : hueVar("stone");
-
-  // ---- reveal: the room expands out of the bubble the map just zoomed into ----
+  // ---- reveal: the map has zoomed into the bubble; the room's backdrop and controls fade in around it ----
+  // The people, lines and bubble are drawn exactly over the map's own (see RoomStage), so they show from the
+  // first frame; only the backdrop and chrome fade. The map keeps running underneath, so nothing jumps on exit.
   const open = useMotionValue(0);
-  const clipPath = useTransform(open, (v) => `circle(${Math.max(v, 0) * 80}% at 50% 47%)`);
-  const scale = useTransform(open, [0, 1], [0.9, 1]);
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const controls = animate(open, 1, {
-      duration: reduced ? 0 : 0.7,
-      ease: EASE_OUT,
-      onComplete: () => sceneEvents.emit("map-pause"),
-    });
-    return () => {
-      controls.stop();
-      sceneEvents.emit("map-resume");
-    };
+    const controls = animate(open, 1, { duration: reduced ? 0 : 0.45, ease: EASE_OUT });
+    return () => controls.stop();
   }, [open]);
 
-  // ---- minimize: the room contracts back into its bubble; the connection stays up ----
+  // ---- minimize: the backdrop fades off the map, then the camera zooms back out; the connection stays up ----
   const minimize = useCallback(
     async (how: "button" | "scroll" | "esc" = "button") => {
       if (exiting.current) return;
       exiting.current = true;
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setSelected(null);
-      sceneEvents.emit("map-resume");
       if (how === "scroll") swallowWheel(1100);
-      await animate(open, 0, { duration: reduced ? 0 : 0.42, ease: EASE_IN });
+      await animate(open, 0, { duration: reduced ? 0 : 0.3, ease: EASE_IN });
       router.push("/");
     },
     [open, router],
@@ -174,10 +166,9 @@ export function RoomView() {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setLeaving(true);
     setSelected(null);
-    sceneEvents.emit("map-resume");
     const done = leave();
     await new Promise((r) => setTimeout(r, reduced ? 0 : 450));
-    await animate(open, 0, { duration: reduced ? 0 : 0.45, ease: EASE_IN });
+    await animate(open, 0, { duration: reduced ? 0 : 0.3, ease: EASE_IN });
     await done;
     router.push("/");
   }, [leave, open, router]);
@@ -189,26 +180,22 @@ export function RoomView() {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let acc = 0;
     let idle: ReturnType<typeof setTimeout> | undefined;
-    let revealing = false;
     let pinchStart = 0;
 
+    // Scrolling out is a real zoom: the map's camera pulls back (and the room's people with it), the backdrop thins.
     const setProgress = (progress: number) => {
-      if (progress > 0 && !revealing) {
-        revealing = true;
-        sceneEvents.emit("map-resume");
+      if (!reduced) {
+        scene.mapApi?.scrub(progress);
+        open.set(1 - progress * 0.5);
       }
-      if (!reduced) open.set(1 - progress * 0.45);
       if (progress >= 1) minimize("scroll");
     };
     const springBack = () => {
       acc = 0;
       pinchStart = 0;
       if (exiting.current) return;
+      scene.mapApi?.scrub(0);
       animate(open, 1, { type: "spring", stiffness: 320, damping: 30 });
-      if (revealing) {
-        revealing = false;
-        sceneEvents.emit("map-pause");
-      }
     };
     const onWheel = (e: WheelEvent) => {
       if ((e.target as Element | null)?.closest?.("[data-scroll-region]")) return;
@@ -313,19 +300,20 @@ export function RoomView() {
   return (
     <motion.div
       ref={overlayRef}
-      style={{ clipPath, WebkitClipPath: clipPath, scale }}
-      className="fixed inset-0 z-10 touch-none overflow-hidden backdrop-blur-[6px]"
+      className="fixed inset-0 z-10 touch-none overflow-hidden"
       onClick={() => setSelected(null)}
     >
-      <div
+      <motion.div
         aria-hidden
         className="absolute inset-0"
         style={{
+          opacity: open,
           background: `radial-gradient(ellipse at 50% 45%, color-mix(in srgb, ${color} 7%, transparent), transparent 55%), radial-gradient(ellipse at 50% 40%, var(--bg-1), var(--bg-0) 72%)`,
         }}
       />
       <RoomContext.Provider value={conn.room ?? undefined}>
         <div className="relative flex h-full flex-col">
+          <motion.div style={{ opacity: open }} className="relative z-20">
           <RoomHeader
             name={name}
             group={group}
@@ -339,6 +327,7 @@ export function RoomView() {
             onMinimize={() => minimize("button")}
             onSelect={select}
           />
+          </motion.div>
 
           <div className="flex min-h-0 flex-1">
             <main className="flex min-w-0 flex-1 flex-col" aria-label="Room">
@@ -359,13 +348,15 @@ export function RoomView() {
                   ) : (
                     <motion.div
                       key="radial"
-                      initial={{ opacity: 0, scale: 1.03 }}
-                      animate={{ opacity: ui.phase === "failed" ? 0.45 : 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.03 }}
+                      // opacity only: a scale here would move the stage off the map bubble it is drawn over
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: ui.phase === "failed" ? 0.45 : 1 }}
+                      exit={{ opacity: 0 }}
                       transition={{ duration: 0.3, ease: EASE_OUT }}
                       className="absolute inset-0"
                     >
                       <RoomStage
+                        groupId={roomGroup?.id ?? null}
                         members={members}
                         friendsOf={friendsOf}
                         color={color}
@@ -413,7 +404,11 @@ export function RoomView() {
                 )}
               </AnimatePresence>
 
-              <div className="flex h-[96px] shrink-0 items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <motion.div
+                style={{ opacity: open }}
+                className="flex h-[96px] shrink-0 items-center justify-center"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <RoomDock
                   chatOpen={ui.chatOpen}
                   unread={conn.unread}
@@ -427,7 +422,7 @@ export function RoomView() {
                   onScreen={conn.toggleScreen}
                   onLeave={leaveRoom}
                 />
-              </div>
+              </motion.div>
             </main>
 
             {/* desktop: chat is a column; the stage narrows and the bubble eases to its new size */}
@@ -443,9 +438,9 @@ export function RoomView() {
                   className="shrink-0 overflow-hidden border-l border-border bg-card/85"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="h-full" style={{ width: chatWidth }}>
+                  <motion.div className="h-full" style={{ width: chatWidth, opacity: open }}>
                     {chat}
-                  </div>
+                  </motion.div>
                 </motion.aside>
               )}
             </AnimatePresence>
