@@ -10,7 +10,7 @@ import { useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { useConfig, useSseChannel } from "@/hooks/useRealtime";
 import { api, fetcher, loadIdentity } from "@/lib/client/api";
-import { scene } from "@/lib/client/scene";
+import { scene, sceneEvents } from "@/lib/client/scene";
 import type { ChatHour, Group, RoomEvent } from "@/lib/types";
 import { ChatSheet } from "./ChatSheet";
 import { Dock } from "./Dock";
@@ -154,7 +154,7 @@ export function RoomView() {
 
   // ---- leaving: you stay in the bubble (as "away"); the view just zooms back out ----
   const exitRoom = useCallback(
-    (how: "leave" | "scroll" | "esc") => {
+    (how: "leave" | "scroll" | "esc" | "background") => {
       if (exiting.current) return;
       exiting.current = true;
       setChatOpen(false);
@@ -166,6 +166,11 @@ export function RoomView() {
     },
     [name, router],
   );
+
+  useEffect(() => {
+    const offExit = sceneEvents.on("exit-room", () => exitRoom("background"));
+    return offExit;
+  }, [exitRoom]);
 
   // ---- scroll up (or pinch out) to zoom back out to the map: scrubbed, commits past a threshold ----
   useEffect(() => {

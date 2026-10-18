@@ -20,7 +20,7 @@ import { GRAPH_KEY, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
 import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
-import { scene } from "@/lib/client/scene";
+import { scene, sceneEvents } from "@/lib/client/scene";
 import { INTERESTS } from "@/lib/interests";
 import type { Group, GraphGroup, GraphUser } from "@/lib/types";
 import { DegreesSlider } from "./DegreesSlider";
@@ -163,7 +163,7 @@ export function MapScene() {
 
   return (
     <>
-      <div className="fixed inset-0" aria-label="Social map" role="application">
+      <div className="fixed inset-0" aria-label="Orbit map" role="application">
         {graph && (
           <SocialGraph
             graph={graph}
@@ -179,7 +179,10 @@ export function MapScene() {
             onNodeClick={(u: GraphUser) => setSelectedId((cur) => (cur === u.id ? null : u.id))}
             onGroupClick={(g) => enterGroup(g)}
             onGroupDoubleClick={(g, at) => (me ? setAddTo({ group: g, at }) : setCreateOpen(true))}
-            onBackgroundClick={() => setSelectedId(null)}
+            onBackgroundClick={() => {
+              setSelectedId(null);
+              if (roomName) sceneEvents.emit("exit-room");
+            }}
             onDropOnGroup={dropOnGroup}
           />
         )}
@@ -216,7 +219,7 @@ export function MapScene() {
                   <Bookmark className="size-[18px]" />
                 </button>
                 <span className="size-2.5 rounded-full bg-[#22D3EE] shadow-[0_0_14px_#22D3EE]" aria-hidden />
-                <h1 className="font-heading text-lg font-semibold tracking-tight">Social Mapper</h1>
+                <h1 className="font-heading text-lg font-semibold tracking-tight">Orbit</h1>
               </div>
               <div className="pointer-events-auto flex items-center gap-2">
                 {me ? (

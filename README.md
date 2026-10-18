@@ -1,7 +1,8 @@
-# Social Mapper
+# Orbit
 
 Redefining social media, for learning. A live map of people (glowing circles) and their friendships (lines), grouped into
-interest-group blobs. Click a blob to zoom into its virtual room for text chat, voice, and screen share; scroll up to zoom back out.
+interest-group blobs. Click a blob to zoom into its virtual room for text chat, voice, and screen share; click outside it, use Exit,
+or scroll up to zoom back out.
 
 See [PLAN.md](PLAN.md) for the full design.
 

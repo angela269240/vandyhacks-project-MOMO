@@ -9,7 +9,7 @@ const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const grotesk = Space_Grotesk({ variable: "--font-grotesk", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Social Mapper",
+  title: "Orbit",
   description: "Redefining social media, for learning. Find your people in live interest groups.",
 };
 

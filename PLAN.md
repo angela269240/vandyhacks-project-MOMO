@@ -1,4 +1,4 @@
-# Social Mapper — Build Plan
+# Orbit — Build Plan
 
 > Redefining social media, for learning.
 > Audience: Claude Code (and the humans driving it). Scope: **hackathon demo**: polished visuals plus a working happy path. Optimize for the demo, not for scale.
@@ -208,7 +208,7 @@ Font: **Inter** for UI and **Space Grotesk** for headings and group names (via `
 ## 5. Pages and behaviors
 
 ### 5.1 `/` Home (the map)
-- Full-viewport `ForceGraph2D`. The top-left wordmark reads "Social Mapper". The top-right has the **Bell** (pending friend requests, Popover list with Accept/Decline), the **"+ New group"** button (Dialog with a name input that shows a live "name taken" error from 409), and **your avatar** (opens the edit-profile Sheet).
+- Full-viewport `ForceGraph2D`. The top-left wordmark reads "Orbit". The top-right has the **Bell** (pending friend requests, Popover list with Accept/Decline), the **"+ New group"** button (Dialog with a name input that shows a live "name taken" error from 409), and **your avatar** (opens the edit-profile Sheet).
 - **Clustering forces:** each group gets an *anchor* point. Anchors are laid out on a phyllotaxis spiral (golden angle, radius ∝ √i × 220) so they're stable and spread out. A custom force pulls each node toward its group's anchor (`strength 0.08`). Users with no group drift in an outer ring. Also apply `forceManyBody(-40)`, `forceCollide(12)`, and link distance 60 with low strength (0.05), so friendships pull a little without wrecking clusters.
 - **Zoom:** scroll wheel or trackpad through the built-in d3-zoom. Keep its default direction (scroll up zooms in, scroll down zooms out). Do not invert it to match the room. Clamp to `[0.3, 8]`.
 - **Live move:** when a `user_moved` lobby event arrives, update that node's `groupId`. Its anchor force pulls it across the map and its edges follow. Reheat the sim with `d3ReheatSimulation()` at low alpha (0.3). Also pulse the destination blob once.
