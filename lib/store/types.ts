@@ -15,7 +15,7 @@ export interface Store {
   getDeviceKeyHash(id: string): Promise<string | null>;
   updateUser(id: string, patch: Partial<ProfileInput>): Promise<User | null>;
 
-  getGraph(now: Date, lingerMs: number): Promise<Graph>;
+  getGraph(now: Date, lingerMs: number, vacancyMs: number): Promise<Graph>;
 
   /** Returns null when the (case-insensitive) name is taken. */
   createGroup(name: string, color: string, createdBy: string): Promise<Group | null>;
@@ -24,13 +24,21 @@ export interface Store {
   /** Marks the user as out of the room; they keep their group for the linger window. Returns false if they weren't in it. */
   leaveRoom(userId: string, groupId: number, now: Date): Promise<boolean>;
 
+  /**
+   * One screen share per room. Atomically takes the group's share slot if it's free, already ours,
+   * or held by someone no longer in the room. Returns who holds it afterwards.
+   */
+  claimScreen(userId: string, groupId: number): Promise<{ granted: boolean; sharerId: string | null }>;
+  /** Frees the slot if this user holds it. Leaving the room or joining another group frees it too. */
+  releaseScreen(userId: string, groupId: number): Promise<void>;
+
   appendChat(groupId: number, message: ChatMessage, hourStart: string): Promise<void>;
   getChat(groupId: number, limitHours: number): Promise<ChatHour[]>;
   listUnsummarizedHours(before: string, minMessages: number): Promise<{ groupId: number; hour: ChatHour }[]>;
   setSummary(groupId: number, hourStart: string, summary: string): Promise<void>;
 
-  /** Removes groups with no active members whose last exit is older than the linger window. */
-  expireGroups(now: Date, lingerMs: number): Promise<ExpiredGroup[]>;
+  /** Removes groups with no active members whose last exit is older than the vacancy window. */
+  expireGroups(now: Date, vacancyMs: number): Promise<ExpiredGroup[]>;
 
   getFriendState(userId: string): Promise<FriendState>;
   requestFriend(from: string, to: string): Promise<"pending" | "accepted" | "exists">;

@@ -2,15 +2,20 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import { ApiError, fetcher, loadIdentity, saveIdentity, type Identity } from "@/lib/client/api";
+import { ApiError, fetcher, loadIdentity, loadSession, saveIdentity, saveSession, type Identity } from "@/lib/client/api";
 import type { FriendState, User } from "@/lib/types";
 
 type MeContext = {
-  /** false until localStorage has been read (avoids flashing the create-profile dialog) */
+  /** false until localStorage has been read (avoids flashing the login window) */
   ready: boolean;
+  /** the demo profile saved on this device, whether or not this tab has entered with it */
   identity: Identity | null;
+  /** this tab has entered Orbit with `identity` */
+  signedIn: boolean;
   me: User | null;
   setIdentity: (identity: Identity | null) => void;
+  /** saves the identity on this device and enters Orbit with it */
+  signIn: (identity: Identity) => void;
   refreshMe: () => Promise<unknown>;
   friends: FriendState;
   refreshFriends: () => Promise<unknown>;
@@ -22,17 +27,33 @@ const Ctx = createContext<MeContext | null>(null);
 export function MeProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [identity, setIdentityState] = useState<Identity | null>(null);
+  const [session, setSession] = useState<string | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable after mount
+    /* eslint-disable react-hooks/set-state-in-effect -- browser storage is only readable after mount */
     setIdentityState(loadIdentity());
+    setSession(loadSession());
     setReady(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const setIdentity = useCallback((next: Identity | null) => {
     saveIdentity(next);
     setIdentityState(next);
+    if (!next) {
+      saveSession(null);
+      setSession(null);
+    }
   }, []);
+
+  const signIn = useCallback((next: Identity) => {
+    saveIdentity(next);
+    saveSession(next.userId);
+    setIdentityState(next);
+    setSession(next.userId);
+  }, []);
+
+  const signedIn = !!identity && session === identity.userId;
 
   const meQuery = useSWR<User>(identity ? `/api/users/${identity.userId}` : null, fetcher, {
     onError: (e) => {
@@ -40,7 +61,7 @@ export function MeProvider({ children }: { children: React.ReactNode }) {
       if (e instanceof ApiError && e.status === 404) setIdentity(null);
     },
   });
-  const friendsQuery = useSWR<FriendState>(identity ? `/api/friends#${identity.userId}` : null, (key: string) =>
+  const friendsQuery = useSWR<FriendState>(signedIn ? `/api/friends#${identity!.userId}` : null, (key: string) =>
     fetcher<FriendState>(key.split("#")[0]),
   );
 
@@ -48,13 +69,15 @@ export function MeProvider({ children }: { children: React.ReactNode }) {
     () => ({
       ready,
       identity,
+      signedIn,
       me: identity ? (meQuery.data ?? null) : null,
       setIdentity,
+      signIn,
       refreshMe: () => meQuery.mutate(),
       friends: friendsQuery.data ?? EMPTY_FRIENDS,
       refreshFriends: () => friendsQuery.mutate(),
     }),
-    [ready, identity, meQuery, friendsQuery, setIdentity],
+    [ready, identity, signedIn, meQuery, friendsQuery, setIdentity, signIn],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

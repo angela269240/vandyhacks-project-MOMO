@@ -22,6 +22,26 @@ export function saveIdentity(identity: Identity | null) {
   }
 }
 
+const SESSION_KEY = "orbit.session";
+
+/** Which saved profile this tab has entered Orbit as. Per tab, so a new tab asks again. */
+export function loadSession(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveSession(userId: string | null) {
+  try {
+    if (userId) sessionStorage.setItem(SESSION_KEY, userId);
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // storage blocked: the session lasts until reload
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -41,6 +61,7 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
       ...(identity ? { "x-user-id": identity.userId, "x-device-key": identity.deviceKey } : {}),
     },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? res.statusText, res.status);

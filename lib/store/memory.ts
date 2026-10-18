@@ -9,6 +9,8 @@ type Friendship = { a: string; b: string; status: "pending" | "accepted"; reques
 type State = {
   users: Map<string, User & { deviceKeyHash: string }>;
   groups: Map<number, Group>;
+  /** groupId -> user holding the room's screen share slot */
+  screens: Map<number, string>;
   friendships: Map<string, Friendship>;
   chat: Map<string, ChatHour & { groupId: number }>;
   nextGroupId: number;
@@ -20,7 +22,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 function seededState(): State {
   const now = new Date();
   const world = buildSeedWorld(now);
-  const state: State = { users: new Map(), groups: new Map(), friendships: new Map(), chat: new Map(), nextGroupId: 1 };
+  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
     const id = state.nextGroupId++;
@@ -115,10 +117,10 @@ export const memoryStore: Store = {
     return publicUser(u);
   },
 
-  async getGraph(now, lingerMs) {
+  async getGraph(now, lingerMs, vacancyMs) {
     const s = state();
     const friendships = [...s.friendships.values()].filter((f) => f.status === "accepted");
-    return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, lingerMs);
+    return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, lingerMs, vacancyMs);
   },
 
   async createGroup(name, color, createdBy) {
@@ -147,9 +149,10 @@ export const memoryStore: Store = {
     u.inRoom = true;
     u.leftGroupAt = null;
     group.lastExitAt = null;
-    if (fromGroupId !== null && fromGroupId !== groupId && activeCount(fromGroupId) === 0) {
+    if (fromGroupId !== null && fromGroupId !== groupId) {
+      if (s.screens.get(fromGroupId) === userId) s.screens.delete(fromGroupId);
       const from = s.groups.get(fromGroupId);
-      if (from) from.lastExitAt = now.toISOString();
+      if (from && activeCount(fromGroupId) === 0) from.lastExitAt = now.toISOString();
     }
     return { group, fromGroupId };
   },
@@ -160,11 +163,26 @@ export const memoryStore: Store = {
     if (!u || u.currentGroupId !== groupId || !u.inRoom) return false;
     u.inRoom = false;
     u.leftGroupAt = now.toISOString();
+    if (s.screens.get(groupId) === userId) s.screens.delete(groupId);
     if (activeCount(groupId) === 0) {
       const grp = s.groups.get(groupId);
       if (grp) grp.lastExitAt = now.toISOString();
     }
     return true;
+  },
+
+  async claimScreen(userId, groupId) {
+    const s = state();
+    const holder = s.screens.get(groupId);
+    const h = holder === undefined ? undefined : s.users.get(holder);
+    if (holder && holder !== userId && h?.currentGroupId === groupId && h.inRoom) return { granted: false, sharerId: holder };
+    s.screens.set(groupId, userId);
+    return { granted: true, sharerId: userId };
+  },
+
+  async releaseScreen(userId, groupId) {
+    const s = state();
+    if (s.screens.get(groupId) === userId) s.screens.delete(groupId);
   },
 
   async appendChat(groupId, message: ChatMessage, hourStart) {
@@ -194,14 +212,15 @@ export const memoryStore: Store = {
     if (bucket) bucket.summary = summary;
   },
 
-  async expireGroups(now, lingerMs) {
+  async expireGroups(now, vacancyMs) {
     const s = state();
-    const cutoff = now.getTime() - lingerMs;
+    const cutoff = now.getTime() - vacancyMs;
     const expired = [];
     for (const grp of [...s.groups.values()]) {
       if (activeCount(grp.id) > 0 || !grp.lastExitAt || new Date(grp.lastExitAt).getTime() > cutoff) continue;
       const chat = await this.getChat(grp.id, Number.MAX_SAFE_INTEGER);
       s.groups.delete(grp.id);
+      s.screens.delete(grp.id);
       for (const [k, c] of s.chat) if (c.groupId === grp.id) s.chat.delete(k);
       for (const u of s.users.values()) if (u.currentGroupId === grp.id) u.currentGroupId = null;
       expired.push({ group: grp, chat });

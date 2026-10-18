@@ -136,7 +136,7 @@ export const oracleStore: Store = {
     return this.getUser(id);
   },
 
-  async getGraph(now, lingerMs) {
+  async getGraph(now, lingerMs, vacancyMs) {
     const [users, groups, friendships] = await Promise.all([
       query<UserRow>(USER_SELECT),
       query<GroupRow>(`SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups`),
@@ -148,6 +148,7 @@ export const oracleStore: Store = {
       friendships.map((f) => ({ a: f.USER_A, b: f.USER_B })),
       now,
       lingerMs,
+      vacancyMs,
     );
   },
 
@@ -192,7 +193,13 @@ export const oracleStore: Store = {
         { g: groupId, id: userId },
       );
       await conn.execute(`UPDATE interest_groups SET last_exit_at = NULL WHERE id = :g`, { g: groupId });
-      if (fromGroupId !== null && fromGroupId !== groupId) await markGroupEmptyIfNoneActive(conn, fromGroupId, now);
+      if (fromGroupId !== null && fromGroupId !== groupId) {
+        await conn.execute(
+          `UPDATE interest_groups SET screen_sharer_id = NULL WHERE id = :g AND screen_sharer_id = :id`,
+          { g: fromGroupId, id: userId },
+        );
+        await markGroupEmptyIfNoneActive(conn, fromGroupId, now);
+      }
       const grp = await conn.execute<GroupRow>(
         `SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups WHERE id = :g`,
         { g: groupId },
@@ -210,9 +217,44 @@ export const oracleStore: Store = {
         { now, id: userId, g: groupId },
       );
       if (!res.rowsAffected) return false;
+      await conn.execute(
+        `UPDATE interest_groups SET screen_sharer_id = NULL WHERE id = :g AND screen_sharer_id = :id`,
+        { g: groupId, id: userId },
+      );
       await markGroupEmptyIfNoneActive(conn, groupId, now);
       await conn.commit();
       return true;
+    });
+  },
+
+  async claimScreen(userId, groupId) {
+    return withConnection(async (conn) => {
+      // A single conditional UPDATE is the arbitration: two simultaneous claims can't both match.
+      const res = await conn.execute(
+        `UPDATE interest_groups g SET screen_sharer_id = :id
+          WHERE g.id = :g
+            AND (g.screen_sharer_id IS NULL OR g.screen_sharer_id = :id
+                 OR NOT EXISTS (SELECT 1 FROM users u
+                                 WHERE u.id = g.screen_sharer_id AND u.current_group_id = g.id AND u.in_room = 1))`,
+        { id: userId, g: groupId },
+      );
+      await conn.commit();
+      if (res.rowsAffected) return { granted: true, sharerId: userId };
+      const row = await conn.execute<{ SCREEN_SHARER_ID: string | null }>(
+        `SELECT screen_sharer_id FROM interest_groups WHERE id = :g`,
+        { g: groupId },
+      );
+      return { granted: false, sharerId: row.rows?.[0]?.SCREEN_SHARER_ID ?? null };
+    });
+  },
+
+  async releaseScreen(userId, groupId) {
+    await withConnection(async (conn) => {
+      await conn.execute(`UPDATE interest_groups SET screen_sharer_id = NULL WHERE id = :g AND screen_sharer_id = :id`, {
+        g: groupId,
+        id: userId,
+      });
+      await conn.commit();
     });
   },
 
@@ -262,8 +304,8 @@ export const oracleStore: Store = {
     });
   },
 
-  async expireGroups(now, lingerMs) {
-    const cutoff = new Date(now.getTime() - lingerMs);
+  async expireGroups(now, vacancyMs) {
+    const cutoff = new Date(now.getTime() - vacancyMs);
     const rows = await query<GroupRow>(
       `SELECT id, name, color, created_by, created_at, last_exit_at FROM interest_groups g
         WHERE last_exit_at < :cutoff

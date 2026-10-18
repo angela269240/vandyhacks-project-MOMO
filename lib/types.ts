@@ -34,7 +34,8 @@ export type Edge = { source: string; target: string };
 
 export type Graph = { users: GraphUser[]; groups: GraphGroup[]; edges: Edge[] };
 
-export type ChatMessage = { ts: string; userId: string; text: string };
+/** `id` is assigned by the server; messages stored before ids existed fall back to ts + userId. */
+export type ChatMessage = { id?: string; ts: string; userId: string; text: string };
 
 export type ChatHour = { hourStart: string; messages: ChatMessage[]; summary: string | null };
 

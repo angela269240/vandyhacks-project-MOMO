@@ -29,6 +29,8 @@ type Pt = [number, number];
 export type MapApi = {
   zoomToGroup: (groupId: number, ms?: number) => void;
   fitAll: (ms?: number) => void;
+  /** zoom in on someone's circle; false if they aren't in a group (alone in the outer ring, fitAll frames better) */
+  centerOnUser: (userId: string, ms?: number) => boolean;
   getCamera: () => Camera;
   setCamera: (c: Camera, ms?: number) => void;
   /** fade everything except this group (entering a room) */
@@ -154,6 +156,13 @@ export default function SocialGraph(props: Props) {
         }
       },
       fitAll: (ms = 600) => fg.zoomToFit(ms, 70, (n) => (n as NodeData).user.groupId !== null),
+      centerOnUser: (userId, ms = 800) => {
+        const n = nodes.get(userId);
+        if (n?.user.groupId == null || n.x === undefined || n.y === undefined) return false;
+        fg.centerAt(n.x, n.y, ms);
+        fg.zoom(1.4, ms);
+        return true;
+      },
       getCamera: () => ({ ...fg.centerAt(), k: fg.zoom() }),
       setCamera: (c, ms = 800) => {
         fg.centerAt(c.x, c.y, ms);
@@ -338,7 +347,7 @@ export default function SocialGraph(props: Props) {
           ctx.shadowBlur = 0;
           ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
           ctx.fillStyle = rgba(g.color, 0.9);
-          const label = g.activeCount ? `${g.activeCount} here now` : "empty · fading in 24h";
+          const label = g.activeCount ? `${g.activeCount} here now` : "empty · fades after 30 days";
           ctx.fillText(label, cx, top - 6 / gs - 16 / gs);
           ctx.restore();
         }

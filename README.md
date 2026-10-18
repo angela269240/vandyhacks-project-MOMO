@@ -38,21 +38,24 @@ npm run db:migrate
 npm run db:seed
 ```
 
-`npm run db:migrate -- --reset` drops and recreates everything.
+`npm run db:migrate -- --reset` drops and recreates everything. A database created before the screen-share slot
+was added needs `npm run db:migrate -- --upgrade` (adds `interest_groups.screen_sharer_id`; safe to re-run).
 
 ### LiveKit
 
 Create a LiveKit Cloud project, set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, and add a webhook pointing to
-`https://<your-deployment>/api/livekit/webhook` so closed tabs leave their rooms.
+`https://<your-deployment>/api/livekit/webhook` so closed tabs leave their rooms and an abandoned screen share frees the
+room's share slot. Without LiveKit, rooms still work for presence and chat, but voice and screen sharing are a local preview
+that only you see.
 
 ### Deploying to Vercel
 
 Set the same env vars in the Vercel project. `vercel.json` schedules `/api/cron/hourly`, which writes chat recaps and archives
-then deletes groups that have been empty for 24 hours. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single process.
+then deletes groups whose room has been empty for 30 days. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single process.
 
 ## Demo tips
 
-- `FAST_CLOCK=1` shrinks the 24-hour linger to 2 minutes; leave a group, wait, then call `/api/cron/hourly` to watch it fade.
+- `FAST_CLOCK=1` shrinks the 24-hour away window to 2 minutes and the 30-day empty-group expiry to 5 minutes; leave a group, wait, then call `/api/cron/hourly` to watch it fade.
 - New profiles get two friend requests from seeded classmates so the bell has something in it (`DEMO_WELCOME_REQUESTS=0` turns this off).
 - Open two browser windows (one private) to see moves, new friendships and chat appear live.
 
@@ -60,6 +63,10 @@ then deletes groups that have been empty for 24 hours. On Vercel, use LiveKit fo
 
 - `app/(map)/layout.tsx` keeps the map mounted; `app/(map)/g/[name]` renders the room as an overlay on top of it.
 - `components/map/SocialGraph.tsx` handles the force graph, blobs, bobbing, glow, hover and focus highlighting.
-- `components/room/RoomView.tsx` handles join/leave, the reveal and scroll-out transitions, the dock, chat and media.
+- `components/room/RoomConnection.tsx` owns the live room (join, LiveKit or local media, chat, screen-share claim). It sits in
+  the `(map)` layout, so **Minimize** (or browser back) returns to the map without disconnecting; only **Leave** ends it.
+- `components/room/RoomView.tsx` is the room screen: header, stage, dock, chat column, and the enter/minimize/leave transitions.
+  `RoomStage.tsx` draws the bubble (`RoomBubble`), friendship lines (`RoomFriendshipEdges`) and people (`RoomMember`) from one
+  animation loop; `ScreenShareStage.tsx` and `ParticipantCarousel.tsx` take over while someone is sharing.
 - `lib/store/` has the `Store` interface with `oracle.ts` and `memory.ts` implementations.
 - `lib/events.ts` fans out lobby and room events through LiveKit or the SSE bus.

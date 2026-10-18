@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { handle, json } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { broadcastRoom } from "@/lib/events";
@@ -23,7 +24,7 @@ export const POST = handle(async (req: Request, ctx: RouteContext<"/api/groups/[
   const group = await store.getGroupByName(decodeURIComponent(name));
   if (!group) return json({ error: "Group not found" }, { status: 404 });
   const now = new Date();
-  const message: ChatMessage = { ts: now.toISOString(), userId, text };
+  const message: ChatMessage = { id: randomUUID(), ts: now.toISOString(), userId, text };
   const hour = hourStart(now);
   await store.appendChat(group.id, message, hour);
   await broadcastRoom(group.id, { type: "chat", payload: { hourStart: hour, message } });
