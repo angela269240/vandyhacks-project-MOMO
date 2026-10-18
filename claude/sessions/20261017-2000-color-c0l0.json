@@ -1,0 +1,70 @@
+{
+  "id": "20261017-2000-color-c0l0",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "unknown (reconstructed after the fact)",
+  "human": "sui-bai",
+  "branch": "color",
+  "base": "ebe35de",
+  "started": "2026-10-17T19:30:00-05:00",
+  "ended": null,
+  "status": "paused",
+  "goal": "Replace the neon palette with a theme-aware warm/OKLCH hue system across map, rooms, profiles and auth.",
+  "summary": "Reconstructed from the staged diff by the handoff-setup session; the original session left no record. 33 files staged, not committed. NEON array → HUES keys (sage, clay, slate, ochre, plum, teal, rose, olive + neutral stone) rendered via CSS vars --hue-<key> defined per theme in app/globals.css. New lib/client/groupHues.ts assigns bubble hues from the full layout so neighbors differ; lib/client/palette.ts useHueHex() resolves vars to hex for canvas/SVG. components/ambient/NeonParticles.tsx deleted; Ambient.tsx is now a static paper-grain layer. Interest/identity colors come from interestHue(id).",
+  "claims": [
+    "app/globals.css",
+    "app/layout.tsx",
+    "lib/colors.ts",
+    "lib/interests.ts",
+    "lib/client/groupHues.ts",
+    "lib/client/palette.ts",
+    "components/ambient/**",
+    "components/auth/**",
+    "components/map/**",
+    "components/room/**",
+    "components/profile/**",
+    "components/bookmarks/**",
+    "components/friends/RequestsBell.tsx",
+    "components/groups/NewGroupDialog.tsx",
+    "components/ThemeSwitch.tsx"
+  ],
+  "files_touched": [
+    "app/globals.css", "app/layout.tsx", "components/ThemeSwitch.tsx", "components/ambient/Ambient.tsx",
+    "components/ambient/NeonParticles.tsx (deleted)", "components/auth/AuthWindow.tsx", "components/auth/PreviewGraph.tsx",
+    "components/bookmarks/AddToBookmark.tsx", "components/bookmarks/BookmarksPane.tsx", "components/friends/RequestsBell.tsx",
+    "components/groups/NewGroupDialog.tsx", "components/map/FilterBar.tsx", "components/map/MapScene.tsx",
+    "components/map/SocialGraph.tsx", "components/profile/Avatar.tsx", "components/profile/ProfileCard.tsx",
+    "components/profile/ProfileForm.tsx", "components/room/ChatPanel.tsx", "components/room/MinimizedRoomWidget.tsx",
+    "components/room/ParticipantCard.tsx", "components/room/ParticipantCarousel.tsx", "components/room/RoomBubble.tsx",
+    "components/room/RoomDock.tsx", "components/room/RoomFriendshipEdges.tsx", "components/room/RoomHeader.tsx",
+    "components/room/RoomMember.tsx", "components/room/RoomStage.tsx", "components/room/RoomView.tsx",
+    "components/room/ScreenShareStage.tsx", "lib/client/groupHues.ts", "lib/client/palette.ts", "lib/colors.ts", "lib/interests.ts"
+  ],
+  "commits": [],
+  "uncommitted": true,
+  "decisions": [
+    { "what": "Palette values live only in CSS (--hue-*), TS knows keys", "why": "Colors follow light/dark theme without re-render plumbing; canvas code resolves via useHueHex()." },
+    { "what": "Bubble hue is assigned at render time, not stored", "why": "Keeps neighboring bubbles distinct as the layout changes; DB color column is a record-only swatch." },
+    { "what": "Remove animated NeonParticles/auras", "why": "Warm redesign: static paper grain keeps focus on the map." }
+  ],
+  "verification": {
+    "typecheck": "pass (npx tsc --noEmit on the staged tree, 2026-10-17, run by the handoff-setup session)",
+    "lint": "not run",
+    "build": "not run",
+    "manual": "not run"
+  },
+  "next_steps": [
+    "Run `npm run lint` and `npm run dev`; check map, room, profile card, auth window in both light and dark themes.",
+    "grep for leftover raw neon hex (#22D3EE, #A78BFA, #F472B6, #34D399, #FBBF24, #60A5FA, #FB7185, #A3E635) and NEON imports; port to hueVar/useHueHex.",
+    "Commit on `color` and open a PR to main. Confirm with the team first: the warm redesign has been reverted twice before (#6, #10).",
+    "After merge, update claude/project.json design.palette_status and PLAN.md §4 to mark the neon palette superseded."
+  ],
+  "open_questions": [
+    "Does the team agree to land the warm palette on main this time? (history: #4 → reverted #6 → #9 → reverted #10)"
+  ],
+  "blockers": [],
+  "conflict_notes": [
+    "Any branch still importing NEON from lib/colors.ts will fail typecheck after this lands; port per claude/conflicts.json rule for lib/colors.ts.",
+    "feat/voice-onboarding branched before this; its new UI may use old neon hex values."
+  ]
+}

@@ -59,6 +59,27 @@ crons), which archives then deletes groups that have been empty for 24 hours. On
 - New profiles get two friend requests from seeded classmates so the bell has something in it (`DEMO_WELCOME_REQUESTS=0` turns this off).
 - Open two browser windows (one private) to see moves, new friendships and chat appear live.
 
+## Working with Claude / AI agents
+
+[`claude/`](claude/README.md) is shared, machine-readable handoff memory for every agent session and every teammate's
+instance. Claude Code loads it automatically at session start:
+
+- `CLAUDE.md` (read by Claude Code every session) imports `AGENTS.md` and the protocol in `claude/README.md`.
+- `.claude/settings.json` has a `SessionStart` hook that runs `node claude/session-start.mjs`. It prints the branch,
+  ahead/behind counts against main, any conflicts in progress with their resolution rules, open sessions on **every**
+  branch (with the files they claim), overlaps with your changes, and the project's invariants. Accept the hook the
+  first time Claude Code asks. Personal settings go in `.claude/settings.local.json` (ignored).
+
+| File | What |
+|---|---|
+| `claude/project.json` | Stack, commands, invariants, dangerous commands, design direction, code map, gotchas |
+| `claude/conflicts.json` | Merge-conflict procedure plus a rule for each conflict-prone path (lockfile, `globals.css`, `lib/colors.ts`, schema, store parity, …) |
+| `claude/sessions/*.json` | One record per session: goal, status, claimed files, decisions, verification, next steps. One file per session means they never conflict. |
+| `claude/schema/session.schema.json` | Schema for session records |
+
+Start a session record with `node claude/new-session.mjs "<goal>" --claim <path>`, update it before you stop, and commit
+it with your work. If you run two agents at once, give each its own branch and `git worktree`.
+
 ## Code map
 
 - `app/(map)/layout.tsx` keeps the map mounted; `app/(map)/g/[name]` renders the room as an overlay on top of it.
