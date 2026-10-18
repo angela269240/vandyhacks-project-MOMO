@@ -240,7 +240,7 @@ export function MapScene() {
                       <Avatar
                         name={me.name}
                         url={me.avatarUrl}
-                        color={identityColor(me)}
+                        color={INTERESTS.find((i) => i.id === me.interestIds[0])?.color ?? "#60A5FA"}
                         size={36}
                       />
                     </button>

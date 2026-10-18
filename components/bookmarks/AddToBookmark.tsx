@@ -40,7 +40,7 @@ export function AddToBookmark({
       initial={{ opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="glass fixed z-50 w-60 origin-top-left rounded-xl p-2 elevated"
+      className="glass fixed z-50 w-60 origin-top-left rounded-xl p-2 shadow-2xl shadow-black/30"
       style={{ left, top }}
       role="dialog"
       aria-label={`Add ${group.name} to a bookmark`}
