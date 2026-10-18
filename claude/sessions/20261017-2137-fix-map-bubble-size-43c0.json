@@ -1,0 +1,48 @@
+{
+  "id": "20261017-2137-fix-map-bubble-size-43c0",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "fix/map-bubble-size",
+  "base": "557517d",
+  "worktree": "/Users/home/Desktop/repositories/oraclehackathon26/momo-bubble-size",
+  "started": "2026-10-18T02:37:58.693Z",
+  "ended": "2026-10-18T02:51:15.913Z",
+  "status": "done",
+  "goal": "Map bubbles grow with member count instead of staying the same size",
+  "summary": "Map bubbles now size by head count: clusterRadius(n) (90 + 70·√n) is both the space the layout reserves and the minimum drawn radius, members float freely inside it, and the outline is centered on the reserved anchor and eased (radius + center). Also: physics cooldown budgeted in ticks (720) instead of wall-clock 12s, so a throttled/background tab no longer freezes nodes in their spawn clumps; group labels show by on-screen bubble size instead of a fixed zoom cutoff.",
+  "claims": [
+    "components/map/SocialGraph.tsx",
+    "components/map/layout.ts"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx",
+    "components/map/layout.ts"
+  ],
+  "commits": [
+    "(this commit) Grow map bubbles with their head count"
+  ],
+  "uncommitted": false,
+  "decisions": [
+    "Bubble outline is centered on the layout anchor, not the member centroid: members now float freely within the bubble, so the centroid wanders and centroid-based outlines overlapped neighbours.",
+    "clusterRadius bumped from 70+60·√n to 90+70·√n so a loose pack at the collide spacing (~120 world units apart) actually fits; at the old size 40-person groups overflowed their reserved slot.",
+    "Anchor force only pulls the part of the distance beyond memberSpread (bubble radius minus pad and node radius), so bigger groups spread out to fill bigger bubbles.",
+    "cooldownTime=Infinity + cooldownTicks=720: wall-clock cooldown expired while a tab drew no frames (hidden pane / background tab), leaving nodes frozen in spawn clumps.",
+    "Labels: r*gs > 24 instead of gs > 0.18; the roomier layout put the initial fit zoom at ~0.178, which hid every name."
+  ],
+  "verification": {
+    "typecheck": "pass for changed files (fresh worktree reports only missing Next generated RouteContext/LayoutProps types, unrelated)",
+    "lint": "pass (eslint on both files)",
+    "build": "not run",
+    "manual": "npm run dev on the in-memory store (ORACLE_* blanked): 40-person bubbles clearly larger than 7-12 person ones, members inside, no overlaps, names visible; dragging self into Startup Ideas (8 -> 9) re-laid out cleanly; dragging a bubble keeps outline and members together."
+  },
+  "next_steps": [
+    "Open a PR from fix/map-bubble-size to main once the human approves."
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": [
+    "Branch `color` (paused session 20261017-2000-color-c0l0) claims components/map/** and restyles colors in SocialGraph.tsx; expect textual conflicts in the hull drawing block (onRenderFramePre). Keep this branch's geometry (drawnBubble center/radius, bubbleRadius) and that branch's colors."
+  ]
+}

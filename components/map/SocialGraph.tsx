@@ -9,7 +9,7 @@ import { initials, rgba } from "@/lib/colors";
 import { INTERESTS } from "@/lib/interests";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import type { Graph, GraphGroup, GraphUser } from "@/lib/types";
-import { bob, computeLayout, ringPoint, type Layout } from "./layout";
+import { bob, clusterRadius, computeLayout, ringPoint, type Layout } from "./layout";
 
 type NodeData = {
   id: string;
@@ -65,7 +65,7 @@ type Props = {
 const NODE_R = 28;
 const UNFOCUSED_SCALE = 0.55;
 const BLOB_PAD = 60;
-const ARRIVED = 230; // members farther than this from their anchor are still travelling
+const ARRIVED = 60; // members farther than this past their bubble's edge are still travelling
 const DOUBLE_CLICK_MS = 260;
 const INTEREST_COLOR = new Map(INTERESTS.map((i) => [i.id, i.color]));
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -90,6 +90,9 @@ export default function SocialGraph(props: Props) {
   const groups = useRef(new Map<number, GraphGroup>());
   const layout = useRef<Layout>({ anchors: new Map(), ringRadius: 400, centerOnMe: true });
   const hulls = useRef(new Map<number, Pt[]>());
+  /** head count per group, and where/how big each bubble is currently drawn (eased toward its target) */
+  const groupSizes = useRef(new Map<number, number>());
+  const drawnBubble = useRef(new Map<number, { x: number; y: number; r: number }>());
   const hoverNode = useRef<NodeData | null>(null);
   const hoverGroup = useRef<number | null>(null);
   const focus = useRef<{ groupId: number; start: number } | null>(null);
@@ -126,6 +129,19 @@ export default function SocialGraph(props: Props) {
     return !v || v.has(n.id);
   };
   const isFocused = (n: NodeData) => n.user.groupId === null || propsRef.current.focusedGroupIds.has(n.user.groupId);
+  /** how big a bubble should be for its head count (the same size the layout reserves for it) */
+  const bubbleRadius = useCallback((groupId: number) => {
+    const scale = propsRef.current.focusedGroupIds.has(groupId) ? 1 : UNFOCUSED_SCALE;
+    return clusterRadius(groupSizes.current.get(groupId) ?? 0, scale);
+  }, []);
+  /** how far from the anchor members may drift while still sitting inside the bubble outline */
+  const memberSpread = useCallback(
+    (groupId: number) => {
+      const scale = propsRef.current.focusedGroupIds.has(groupId) ? 1 : UNFOCUSED_SCALE;
+      return Math.max(0, bubbleRadius(groupId) - (BLOB_PAD + NODE_R) * scale);
+    },
+    [bubbleRadius],
+  );
 
   const targetFor = useCallback((n: NodeData) => {
     const L = layout.current;
@@ -174,8 +190,16 @@ export default function SocialGraph(props: Props) {
         for (const n of anchored) {
           if (n.fx !== undefined) continue;
           const t = targetFor(n);
-          n.vx = (n.vx ?? 0) + (t.x - (n.x ?? 0)) * pull;
-          n.vy = (n.vy ?? 0) + (t.y - (n.y ?? 0)) * pull;
+          const dx = t.x - (n.x ?? 0);
+          const dy = t.y - (n.y ?? 0);
+          // Bubble members float freely inside their bubble (so a bigger group spreads out and fills a bigger one);
+          // only the part of the distance beyond that free zone is pulled in.
+          const free = n.user.groupId === null ? 0 : memberSpread(n.user.groupId);
+          const d = Math.hypot(dx, dy);
+          if (d <= free) continue;
+          const k = (pull * (d - free)) / d;
+          n.vx = (n.vx ?? 0) + dx * k;
+          n.vy = (n.vy ?? 0) + dy * k;
         }
       },
       { initialize: (ns: NodeData[]) => (anchored = ns) },
@@ -235,8 +259,8 @@ export default function SocialGraph(props: Props) {
         fg.resumeAnimation();
         if (!paused.current) return;
         paused.current = false;
-        // The cooldown clock keeps running while paused, so without a reheat the simulation stops on the next
-        // tick and bubbles stay frozen wherever the pause caught them (e.g. mid-move after joining a group).
+        // A fresh push after a room: bubbles are often mid-move when the pause catches them (joining a group
+        // reshuffles the layout right as the room opens), and the sim may have cooled since.
         fg.d3ReheatSimulation();
       },
       focusGroup: (groupId) => (focus.current = groupId === null ? null : { groupId, start: performance.now() }),
@@ -250,7 +274,7 @@ export default function SocialGraph(props: Props) {
         fg.zoom(scrubBase.current * (1 - 0.45 * progress), 0);
       },
     });
-  }, [size.w, size.h, targetFor, nodes, applyCollide]);  
+  }, [size.w, size.h, targetFor, nodes, applyCollide, memberSpread]);  
 
   // ---- layout: focused bubbles in the middle (mine at the center), the rest in a side strip ----
   const focusKey = [...props.focusedGroupIds].sort((a, b) => a - b).join(",");
@@ -262,6 +286,7 @@ export default function SocialGraph(props: Props) {
     const unfocused = ids.filter((id) => !props.focusedGroupIds.has(id));
     const sizes = new Map<number, number>();
     for (const u of props.graph.users) if (u.groupId !== null) sizes.set(u.groupId, (sizes.get(u.groupId) ?? 0) + 1);
+    groupSizes.current = sizes;
     layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE);
     for (const [id, offset] of groupOffsets.current) {
       const anchor = layout.current.anchors.get(id);
@@ -393,16 +418,27 @@ export default function SocialGraph(props: Props) {
         // Someone still travelling over from elsewhere joins the blob once they arrive.
         const home = layout.current.anchors.get(g.id) ?? null;
         const all = byGroup.get(g.id) ?? [];
-        const arrived = home ? all.filter((m) => Math.hypot((m.x ?? 0) - home.x, (m.y ?? 0) - home.y) < ARRIVED) : all;
+        const arrived = home ? all.filter((m) => Math.hypot((m.x ?? 0) - home.x, (m.y ?? 0) - home.y) < bubbleRadius(g.id) + ARRIVED) : all;
         const members = arrived.length ? arrived : all;
         let pts: Pt[] = [];
         if (members.length) {
-          const cx = members.reduce((sum, m) => sum + (m.x ?? 0), 0) / members.length;
-          const cy = members.reduce((sum, m) => sum + (m.y ?? 0), 0) / members.length;
-          const radius = Math.max(...members.map((m) => Math.hypot((m.x ?? 0) - cx, (m.y ?? 0) - cy))) + pad;
+          // Centered on the spot the layout reserved for it (members float freely inside, so their centroid wanders),
+          // and at least the size its head count calls for, so the bubble grows as people join. Both are eased, so
+          // it swells and glides instead of snapping when someone joins or the layout reshuffles.
+          const tx = home?.x ?? members.reduce((sum, m) => sum + (m.x ?? 0), 0) / members.length;
+          const ty = home?.y ?? members.reduce((sum, m) => sum + (m.y ?? 0), 0) / members.length;
+          const spread = Math.max(...members.map((m) => Math.hypot((m.x ?? 0) - tx, (m.y ?? 0) - ty))) + pad;
+          const tr = Math.max(spread, bubbleRadius(g.id));
+          const prev = drawnBubble.current.get(g.id);
+          const ease = prev && motionOK.current ? 0.08 : 1;
+          const b = prev ?? { x: tx, y: ty, r: tr };
+          b.x += (tx - b.x) * ease;
+          b.y += (ty - b.y) * ease;
+          b.r += (tr - b.r) * ease;
+          drawnBubble.current.set(g.id, b);
           pts = Array.from({ length: 32 }, (_, i) => {
             const a = (i / 32) * Math.PI * 2;
-            return [cx + Math.cos(a) * radius, cy + Math.sin(a) * radius] as Pt;
+            return [b.x + Math.cos(a) * b.r, b.y + Math.sin(a) * b.r] as Pt;
           });
         } else {
           const c = home ?? { x: 0, y: 0 };
@@ -447,7 +483,8 @@ export default function SocialGraph(props: Props) {
         ctx.stroke();
         ctx.restore();
 
-        if (gs > 0.18 && !(roomGroupId === g.id)) {
+        // named once the bubble is big enough on screen to carry a label (bigger groups keep theirs further out)
+        if (r * gs > 24 && !(roomGroupId === g.id)) {
           ctx.save();
           ctx.globalAlpha = alpha * (hovered ? 1 : 0.75);
           ctx.textAlign = "center";
@@ -470,7 +507,7 @@ export default function SocialGraph(props: Props) {
         }
       }
     },
-    [nodes],  
+    [nodes, bubbleRadius],  
   );
 
   const nodeCanvasObject = useCallback((obj: NodeObject<NodeData>, ctx: CanvasRenderingContext2D, gs: number) => {
@@ -774,6 +811,8 @@ export default function SocialGraph(props: Props) {
             if (anchor) layout.current.anchors.set(gd.groupId, { x: anchor.x + dx, y: anchor.y + dy });
             const offset = groupOffsets.current.get(gd.groupId) ?? { x: 0, y: 0 };
             groupOffsets.current.set(gd.groupId, { x: offset.x + dx, y: offset.y + dy });
+            const drawn = drawnBubble.current.get(gd.groupId); // the outline follows the drag 1:1, no easing lag
+            if (drawn) Object.assign(drawn, { x: drawn.x + dx, y: drawn.y + dy });
             for (const n of nodes.values()) {
               if (n.user.groupId !== gd.groupId) continue;
               n.x = (n.x ?? 0) + dx;
@@ -856,7 +895,9 @@ export default function SocialGraph(props: Props) {
           enableZoomInteraction={!inRoom}
           enablePanInteraction={false}
           showPointerCursor={false}
-          cooldownTime={12000}
+          // budgeted in ticks, not wall-clock time, so frames a hidden or throttled tab never drew don't use it up
+          cooldownTime={Infinity}
+          cooldownTicks={720}
           d3VelocityDecay={0.35}
           onNodeHover={(n) => {
             if (drag.current || groupDrag.current?.moved) return;
