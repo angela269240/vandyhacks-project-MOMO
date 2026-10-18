@@ -5,7 +5,7 @@ import { polygonCentroid, polygonContains, polygonHull } from "d3-polygon";
 import { curveCatmullRomClosed, line } from "d3-shape";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-force-graph-2d";
-import { HUES, initials, mixHex, rgba, type ToneKey } from "@/lib/colors";
+import { HUES, initials, interestHue, mixHex, rgba, type ToneKey } from "@/lib/colors";
 import { assignGroupHues, groupHue, groupHues } from "@/lib/client/groupHues";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import type { SearchMatches } from "@/lib/client/filters";
@@ -117,6 +117,8 @@ type Props = {
 };
 
 const NODE_R = 42;
+/** Width of the bubble-colored ring around each person, as a share of their radius (the fill inside is their own color). */
+const NODE_RING = 0.25;
 /** your own circle is drawn this much larger than NODE_R; everyone else is sized relative to it by friendship distance */
 const ME_SCALE = 1.3;
 /** share of your circle's *area* by friendship distance (radius scales with the square root) */
@@ -959,6 +961,11 @@ export default function SocialGraph(props: Props) {
     }
 
     const pal = f.pal!;
+    // Inside: the person's own color (no chosen color is stored yet, so it's their identity color: the hue of their
+    // first interest, gray with none). Ring: the bubble they're shown in (n.color, gray outside any bubble).
+    const personal = n.user.interestIds.length ? pal.hue[interestHue(n.user.interestIds[0])] : pal.hue.stone;
+    // at least ~2.5px on screen so it reads on small circles, but never more than ~40% of the radius
+    const ring = Math.min(r * 0.4, Math.max(r * NODE_RING, 2.5 / gs));
     // Flat disc with a soft drop shadow (depth, not glow) and a thin rim in the paper color.
     if (!n.user.away && focused) {
       ctx.shadowColor = pal.shadow;
@@ -967,11 +974,20 @@ export default function SocialGraph(props: Props) {
     }
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = n.color;
+    ctx.fillStyle = personal;
     ctx.fill();
     ctx.shadowBlur = 0;
 
     ctx.shadowOffsetY = 0;
+    // the bubble ring sits inside the disc's edge, so the node keeps its size
+    ctx.beginPath();
+    ctx.arc(x, y, r - ring / 2, 0, Math.PI * 2);
+    ctx.lineWidth = ring;
+    ctx.strokeStyle = n.color;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.lineWidth = 1.5 / gs;
     ctx.strokeStyle = rgba(pal.nodeEdge, 0.85);
     ctx.stroke();
@@ -985,7 +1001,7 @@ export default function SocialGraph(props: Props) {
     if (gs > 2 && img?.complete && img.naturalWidth) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(x, y, r * 0.92, 0, Math.PI * 2);
+      ctx.arc(x, y, r - ring, 0, Math.PI * 2); // inside the bubble ring, so the photo doesn't cover it
       ctx.clip();
       ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
       ctx.restore();
