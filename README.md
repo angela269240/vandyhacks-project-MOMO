@@ -6,14 +6,18 @@ or scroll up to zoom back out.
 
 See [PLAN.md](PLAN.md) for the full design.
 
-## Run it
+## Local setup
+
+Requirements: Node.js 20.9 or newer and npm. Run commands from this directory—the one that contains this `README.md` and
+`package.json`—rather than from the parent directory that holds the other `momo-*` working copies.
 
 ```bash
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000. With no env vars it runs entirely locally:
+Open [http://localhost:3000](http://localhost:3000). All environment variables are optional for local development:
 
 | Piece | Without config | With config |
 |---|---|---|
@@ -21,8 +25,19 @@ Open http://localhost:3000. With no env vars it runs entirely locally:
 | Realtime map + chat | Server-Sent Events (single process only) | LiveKit data messages (`LIVEKIT_*`) |
 | Voice / screen share | Your own mic level + local screen preview | LiveKit Cloud rooms |
 | Avatars | Process memory | OCI Object Storage via pre-authenticated URLs (`OCI_*`) |
+| Verification emails | Six-digit codes are printed in the server log | Any SMTP provider (`SMTP_*`) |
+| AI features + moderation | Deterministic fallbacks and keyword moderation | OCI Generative AI (`OCI_GENAI_MODEL_ID`) |
 
-Copy `.env.example` to `.env.local` and fill in what you have.
+Fill in only the sections of `.env.local` you want to enable. New accounts require a `.edu` address; without SMTP, read the
+verification code from the terminal running `npm run dev`.
+
+Useful checks before committing or deploying:
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
 
 ### OCI Autonomous Database
 
@@ -48,10 +63,47 @@ Create a LiveKit Cloud project, set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKI
 room's share slot. Without LiveKit, rooms still work for presence and chat, but voice and screen sharing are a local preview
 that only you see.
 
+### Email verification and admin access
+
+Orbit uses six-digit, ten-minute codes for `.edu` signup and admin sign-in. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+`SMTP_PASSWORD`, and optionally `EMAIL_FROM`. `EMAIL_FROM` must be an approved sender when using OCI Email Delivery.
+
+Set `AUTH_SECRET` to a long random value in deployed environments; it signs verified-email tokens and the admin session
+cookie. Set `ADMIN_EMAILS` to a comma-separated allowlist, then open `/admin` to sign in and review moderation reports.
+
+Email is sent by the server through `nodemailer`; it must remain in `dependencies`, not `devDependencies`.
+
+### OCI Generative AI and moderation
+
+Set `OCI_GENAI_MODEL_ID` together with the OCI identity, region, and compartment variables to enable AI onboarding
+suggestions, room-note assistance, chat summaries, and moderation. The daily moderation job reviews usernames, group names,
+the last 24 hours of chat, and recently edited room notes. It archives the review input and stores deduplicated flags for
+the `/admin` dashboard. Without GenAI, a small keyword-based fallback runs instead.
+
 ### Deploying to Vercel
 
-Set the same env vars in the Vercel project. `vercel.json` schedules `/api/cron/expire-groups` once a day (Hobby plans only allow daily
-crons), which archives then deletes groups that have been empty for 24 hours. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single process.
+Set the same environment variables in the Vercel project. `vercel.json` runs moderation daily at 04:00 UTC and group expiry
+daily at 09:00 UTC. The expiry job archives and then deletes groups that have been empty for 24 hours. Set `CRON_SECRET` so
+the cron routes require Vercel's bearer token. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single
+process.
+
+## Troubleshooting
+
+### `Can't resolve 'nodemailer'`
+
+Install dependencies inside this application directory:
+
+```bash
+pwd                    # should end in /momo-deploy
+npm ci
+npm ls nodemailer
+node -p "require.resolve('nodemailer')"
+```
+
+If this fails only on another computer, pull the same branch and confirm that both `package.json` and `package-lock.json` are
+present before running `npm ci`. Do not install from the parent `oraclehackathon26` directory; it has no root `package.json`.
+If the editor still shows a stale error after those commands succeed, restart its TypeScript language server or reopen this
+folder as the workspace root.
 
 ## Demo tips
 
