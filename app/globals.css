@@ -49,11 +49,11 @@
 }
 
 :root {
-  /* Orbit: always-dark, deep blue / black */
-  --bg-0: #03050c;
-  --bg-1: #0a1230;
-  --surface: rgba(14, 22, 52, 0.72);
-  --text-dim: #8a96c2;
+  /* Dark mode: warm charcoal, bone text, clay accent */
+  --bg-0: #1f1e1c;
+  --bg-1: #272522;
+  --surface: rgba(42, 40, 37, 0.88);
+  --text-dim: #a59d91;
 
   --background: #1f1e1c;
   --foreground: #ece6db;
@@ -61,7 +61,7 @@
   --card-foreground: #ece6db;
   --popover: rgba(40, 38, 35, 0.96);
   --popover-foreground: #ece6db;
-  --primary: #da9982;
+  --primary: #d99579;
   --primary-foreground: #1f1e1c;
   --secondary: rgba(236, 230, 219, 0.07);
   --secondary-foreground: #ece6db;
@@ -69,8 +69,8 @@
   --muted-foreground: #a59d91;
   --accent: rgba(236, 230, 219, 0.08);
   --accent-foreground: #ece6db;
-  --destructive: #e18881;
-  --border: rgba(236, 230, 219, 0.1);
+  --destructive: #d9837c;
+  --border: rgba(236, 230, 219, 0.09);
   --input: rgba(236, 230, 219, 0.14);
   --ring: rgba(218, 153, 130, 0.55);
   --radius: 0.875rem;
@@ -84,21 +84,26 @@
   --sidebar-ring: rgba(218, 153, 130, 0.55);
   --room-veil: rgba(22, 21, 19, 0.7);
   --overlay: rgba(14, 13, 12, 0.55);
+  --ink: #ece6db;
+  --ink-muted: #a59d91;
+  --link: rgba(236, 230, 219, 0.14);
+  --node-ring: #1f1e1c;
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
 
   /* soft elevation instead of glow */
   --elev-sm: 0 1px 2px rgb(0 0 0 / 0.25);
-  --elev: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
+  --elev: var(--shadow-soft);
   --grain-opacity: 0.05;
 
   /* Map palette (equal OKLCH lightness/chroma; see lib/colors.ts) */
-  --hue-sage: #84b28d;
-  --hue-clay: #cd9683;
-  --hue-slate: #7eaacf;
-  --hue-ochre: #bda071;
-  --hue-plum: #b996c1;
-  --hue-teal: #6cb3b2;
-  --hue-rose: #cc929e;
-  --hue-olive: #a3aa76;
+  --hue-sage: #8fb39b;
+  --hue-clay: #d99579;
+  --hue-slate: #8ba8c6;
+  --hue-ochre: #d3b26a;
+  --hue-plum: #b697bf;
+  --hue-teal: #7db3af;
+  --hue-rose: #d497a3;
+  --hue-olive: #aeb37a;
   --hue-stone: #aba39a;
   --chart-1: var(--hue-sage);
   --chart-2: var(--hue-clay);
@@ -107,8 +112,8 @@
   --chart-5: var(--hue-plum);
 
   /* read by the map canvas */
-  --map-ink: #ece6db;
-  --map-ink-muted: #a59d91;
+  --map-ink: var(--ink);
+  --map-ink-muted: var(--ink-muted);
   --map-link: #c8bfb2;
   --map-node-ink: #1f1e1c;
   --map-node-edge: #1f1e1c;
@@ -117,7 +122,7 @@
 
 /* Light mode (toggled from the upper-right switch): warm cream paper, ink text */
 html.light {
-  --bg-0: #efe8db;
+  --bg-0: #f4eee3;
   --bg-1: #faf6ee;
   --surface: rgba(255, 252, 246, 0.84);
   --text-dim: #6e655a;
@@ -128,7 +133,7 @@ html.light {
   --card-foreground: #2e2924;
   --popover: rgba(255, 252, 246, 0.97);
   --popover-foreground: #2e2924;
-  --primary: #955640;
+  --primary: #a95d40;
   --primary-foreground: #fffaf3;
   --secondary: rgba(60, 45, 30, 0.06);
   --secondary-foreground: #2e2924;
@@ -136,8 +141,8 @@ html.light {
   --muted-foreground: #6e655a;
   --accent: rgba(60, 45, 30, 0.07);
   --accent-foreground: #2e2924;
-  --destructive: #a74541;
-  --border: rgba(60, 45, 30, 0.13);
+  --destructive: #b04a4a;
+  --border: rgba(60, 45, 30, 0.12);
   --input: rgba(60, 45, 30, 0.18);
   --ring: rgba(149, 86, 64, 0.45);
   --sidebar: #faf6ee;
@@ -150,23 +155,28 @@ html.light {
   --sidebar-ring: rgba(149, 86, 64, 0.45);
   --room-veil: rgba(239, 232, 219, 0.82);
   --overlay: rgba(60, 45, 30, 0.22);
+  --ink: #2e2924;
+  --ink-muted: #6e655a;
+  --link: rgba(90, 75, 60, 0.22);
+  --node-ring: #fffaf3;
+  --shadow-soft: 0 1px 2px rgb(60 40 20 / 0.06), 0 6px 20px rgb(60 40 20 / 0.08);
 
   --elev-sm: 0 1px 2px rgb(60 40 20 / 0.06);
-  --elev: 0 1px 2px rgb(60 40 20 / 0.06), 0 8px 24px rgb(60 40 20 / 0.1);
+  --elev: var(--shadow-soft);
   --grain-opacity: 0.035;
 
-  --hue-sage: #588862;
-  --hue-clay: #a26a57;
-  --hue-slate: #517fa6;
-  --hue-ochre: #937542;
-  --hue-plum: #8f6b97;
-  --hue-teal: #388989;
-  --hue-rose: #a26774;
-  --hue-olive: #798048;
+  --hue-sage: #5f8a70;
+  --hue-clay: #b8694c;
+  --hue-slate: #5a7fa3;
+  --hue-ochre: #a8822f;
+  --hue-plum: #8e6a9a;
+  --hue-teal: #4d8b88;
+  --hue-rose: #b06474;
+  --hue-olive: #7f8646;
   --hue-stone: #817970;
 
-  --map-ink: #2e2924;
-  --map-ink-muted: #6e655a;
+  --map-ink: var(--ink);
+  --map-ink-muted: var(--ink-muted);
   --map-link: #78644f;
   --map-node-ink: #ffffff;
   --map-node-edge: #fffaf3;

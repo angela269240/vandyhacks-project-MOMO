@@ -616,8 +616,9 @@ export default function SocialGraph(props: Props) {
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    ctx.lineWidth = 1 / gs;
-    ctx.strokeStyle = f.light ? "rgba(11,18,48,0.25)" : "rgba(255,255,255,0.3)";
+    ctx.shadowOffsetY = 0;
+    ctx.lineWidth = 1.5 / gs;
+    ctx.strokeStyle = rgba(pal.nodeEdge, 0.85);
     ctx.stroke();
 
     const img = n.user.avatarUrl ? images.current.get(n.user.avatarUrl) : undefined;

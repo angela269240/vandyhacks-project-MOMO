@@ -24,7 +24,7 @@ import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
 import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
 import { scene, sceneEvents } from "@/lib/client/scene";
-import { INTERESTS } from "@/lib/interests";
+import { identityColor } from "@/lib/colors";
 import type { Group, GraphGroup, GraphUser } from "@/lib/types";
 import { DegreesSlider } from "./DegreesSlider";
 import { FilterBar } from "./FilterBar";

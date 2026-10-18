@@ -5,14 +5,14 @@
  * `swatch` is the light-mode value, kept only for records that store a color (it is never rendered).
  */
 export const HUES = [
-  { key: "sage", deg: 150, swatch: "#588862" },
-  { key: "clay", deg: 40, swatch: "#A26A57" },
-  { key: "slate", deg: 245, swatch: "#517FA6" },
-  { key: "ochre", deg: 80, swatch: "#937542" },
-  { key: "plum", deg: 320, swatch: "#8F6B97" },
-  { key: "teal", deg: 195, swatch: "#388989" },
-  { key: "rose", deg: 5, swatch: "#A26774" },
-  { key: "olive", deg: 115, swatch: "#798048" },
+  { key: "sage", deg: 150, swatch: "#5F8A70" },
+  { key: "clay", deg: 40, swatch: "#B8694C" },
+  { key: "slate", deg: 245, swatch: "#5A7FA3" },
+  { key: "ochre", deg: 80, swatch: "#A8822F" },
+  { key: "plum", deg: 320, swatch: "#8E6A9A" },
+  { key: "teal", deg: 195, swatch: "#4D8B88" },
+  { key: "rose", deg: 5, swatch: "#B06474" },
+  { key: "olive", deg: 115, swatch: "#7F8646" },
 ] as const;
 
 export type HueKey = (typeof HUES)[number]["key"];
@@ -59,7 +59,7 @@ export function hueSimilarity(a: HueKey, b: HueKey): number {
   return Math.max(0, 1 - delta / 110) ** 1.5;
 }
 
-/** "#22D3EE" + 0.4 -> "rgba(34,211,238,0.4)" */
+/** "#B8694C" + 0.4 -> "rgba(184,105,76,0.4)" */
 export function rgba(hex: string, alpha: number): string {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;

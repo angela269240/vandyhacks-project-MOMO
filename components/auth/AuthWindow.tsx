@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/useMe";
 import { ApiError, api, type Identity } from "@/lib/client/api";
-import { INTERESTS } from "@/lib/interests";
+import { hueVar, identityColor } from "@/lib/colors";
 import type { FriendState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -83,7 +83,7 @@ export function AuthWindow({
               identity={identity}
               savedName={me?.name ?? null}
               savedAvatar={me?.avatarUrl ?? null}
-              savedColor={INTERESTS.find((i) => i.id === me?.interestIds[0])?.color ?? "#60A5FA"}
+              savedColor={me ? identityColor(me) : hueVar("stone")}
               onEnter={enter}
               onRegister={() => setMode("register")}
             />

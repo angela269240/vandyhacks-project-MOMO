@@ -128,8 +128,8 @@ export function ParticipantCarousel({
       {spotlight && (
         <button
           onClick={() => cards.current.get(spotlight.user.id)?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" })}
-          className="glass absolute -top-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium shadow-lg"
-          style={{ borderColor: spotlight.color, boxShadow: `0 0 16px -4px ${spotlight.color}` }}
+          className="glass elevated absolute -top-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
+          style={{ borderColor: spotlight.color }}
         >
           <Volume2 className="size-3.5" style={{ color: spotlight.color }} aria-hidden />
           {spotlight.user.name.split(" ")[0]} is speaking
@@ -148,7 +148,7 @@ function ArrowButton({ side, enabled, onClick }: { side: "left" | "right"; enabl
       aria-label={side === "left" ? "Previous participants" : "More participants"}
       className={cn(
         "glass hidden size-9 shrink-0 items-center justify-center rounded-full transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex",
-        enabled ? "opacity-100 hover:bg-white/10" : "pointer-events-none opacity-0",
+        enabled ? "opacity-100 hover:bg-foreground/10" : "pointer-events-none opacity-0",
       )}
     >
       <Icon className="size-4" />

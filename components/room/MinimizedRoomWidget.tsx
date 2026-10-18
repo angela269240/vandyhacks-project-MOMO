@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { useRoomPresence } from "@/hooks/useRoomPresence";
+import { useGroupColor } from "@/lib/client/groupHues";
 import { cn } from "@/lib/utils";
 import { useRoomConnection } from "./RoomConnection";
 
@@ -18,11 +19,12 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
   const { session, voice, toggleMic, leave, unread } = useRoomConnection();
   const { data: graph } = useGraph();
   const { identity } = useMe();
+  const groupColor = useGroupColor();
   const group = session?.group ?? null;
   const members = useRoomPresence(group?.id ?? null);
   if (!session || !group) return null;
 
-  const color = group.color;
+  const color = groupColor(group);
   const speakerId = [...voice.speaking][0];
   const speaker = !speakerId
     ? null
@@ -39,19 +41,16 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
       exit={{ opacity: 0, y: 16, scale: 0.96 }}
       transition={{ type: "spring", stiffness: 320, damping: 28 }}
       aria-label={`Live room: ${group.name}`}
-      className="glass fixed right-4 bottom-4 z-30 w-[300px] max-w-[calc(100vw-32px)] rounded-2xl p-3 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.85)]"
-      style={{ borderColor: `${color}55`, boxShadow: `0 0 34px -16px ${color}, 0 20px 60px -20px rgba(0,0,0,0.85)` }}
+      className="glass elevated fixed right-4 bottom-4 z-30 w-[300px] max-w-[calc(100vw-32px)] rounded-2xl p-3"
+      style={{ borderColor: color }}
     >
       <button onClick={onRestore} className="flex w-full items-center gap-2.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70">
-        <span className="relative flex size-3 shrink-0">
-          <span className="absolute inset-0 animate-ping rounded-full opacity-50 motion-reduce:animate-none" style={{ background: color }} />
-          <span className="relative size-3 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
-        </span>
+        <span className="size-3 shrink-0 rounded-full" style={{ background: color }} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-heading text-sm font-semibold">{group.name}</span>
           <span className="block truncate text-xs text-muted-foreground" aria-live="polite">
             {problem ? (
-              <span className="inline-flex items-center gap-1 text-[#FBBF24]">
+              <span className="inline-flex items-center gap-1 text-[var(--hue-ochre)]">
                 <WifiOff className="size-3" /> {session.status === "failed" ? "Disconnected" : "Reconnecting…"}
               </span>
             ) : (
@@ -62,7 +61,7 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
           </span>
         </span>
         {unread > 0 && (
-          <span className="flex items-center gap-1 rounded-full bg-[#F472B6]/15 px-2 py-0.5 text-[11px] font-semibold text-[#F9A8D4]">
+          <span className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
             <MessageSquare className="size-3" aria-hidden /> {unread}
           </span>
         )}
@@ -76,7 +75,7 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
                 onClick={toggleMic}
                 aria-pressed={voice.micOn}
                 aria-label={micLabel}
-                className={cn(button, voice.micOn ? "bg-[#22D3EE]/15 text-[#22D3EE]" : "bg-white/5 text-foreground/85 hover:bg-white/10")}
+                className={cn(button, voice.micOn ? "bg-primary/15 text-primary" : "bg-foreground/5 text-foreground/85 hover:bg-foreground/10")}
               />
             }
           >
@@ -85,7 +84,7 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
           </TooltipTrigger>
           <TooltipContent>{voice.micOn ? "Mute your microphone" : "Turn on your microphone"}</TooltipContent>
         </Tooltip>
-        <button onClick={onRestore} className={cn(button, "flex-1 bg-white/5 text-foreground hover:bg-white/10")}>
+        <button onClick={onRestore} className={cn(button, "flex-1 bg-foreground/5 text-foreground hover:bg-foreground/10")}>
           <Maximize2 /> Restore
         </button>
         <button
@@ -93,7 +92,7 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
             await leave();
             toast(`You left ${group.name}`);
           }}
-          className={cn(button, "text-[#FB7185] hover:bg-[#FB7185]/12")}
+          className={cn(button, "text-destructive hover:bg-destructive/12")}
         >
           <LogOut /> Leave
         </button>

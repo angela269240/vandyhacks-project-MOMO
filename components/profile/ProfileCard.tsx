@@ -46,7 +46,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
   const [busy, setBusy] = useState(false);
   const isMe = me?.id === user.id;
   const mine = new Set(me?.interestIds ?? []);
-  const color = INTERESTS.find((i) => i.id === user.interestIds[0])?.color ?? "#60A5FA";
+  const groupColor = useGroupColor();
   const sharedInterests = isMe ? 0 : user.interestIds.filter((id) => mine.has(id)).length;
 
   // Mutual friends: their accepted friendships that are also mine.
@@ -163,9 +163,9 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
                 key={u.id}
                 name={u.name}
                 url={u.avatarUrl}
-                color={INTERESTS.find((i) => i.id === u.interestIds[0])?.color ?? "#60A5FA"}
+                color={identityColor(u)}
                 size={20}
-                className="ring-2 ring-[#0A1230]"
+                className="ring-2 ring-background"
               />
             ))}
           </div>
