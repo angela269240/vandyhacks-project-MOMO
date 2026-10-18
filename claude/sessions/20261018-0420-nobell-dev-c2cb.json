@@ -1,0 +1,38 @@
+{
+  "id": "20261018-0420-nobell-dev-c2cb",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "6ac83e6",
+  "started": "2026-10-18T09:20:21.348Z",
+  "ended": "2026-10-18T09:40:00Z",
+  "status": "done",
+  "goal": "Nodes outside a bubble turn gray instantly",
+  "summary": "A person's circle now wears its bubble's hue only while it is actually inside that bubble's drawn outline (drawnBubble x/y/r). Dragged out, dropped in open space, still travelling over from another bubble, away, or in no group: gray (stone). Switching to gray is instant (retarget(..., instant)); coming back in still crossfades into the hue over TONE_FADE_MS.",
+  "claims": [
+    "components/map/SocialGraph.tsx"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Inside = distance from the circle to the drawn bubble's center <= its eased radius; before an outline exists (first frames) keep the hue",
+      "why": "Membership in data (groupId) doesn't say where the circle is; the outline is what people see. Keeping the hue when no outline exists avoids a gray flash on load."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "In-memory demo (scratch copy of nobell/dev + this change, debug hook only there): Maya in Badminton Sunday = olive; circle moved 2.5 radii out -> stone on the next frame (from=stone, no fade); moved back -> fades back to olive within ~0.9s; leaving the group -> stone as soon as the map got the update (~200ms), no fade."
+  },
+  "next_steps": [],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": []
+}

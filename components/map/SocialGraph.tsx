@@ -180,10 +180,10 @@ function readPalette(): Palette {
   };
 }
 
-/** Point a tone at a new key, starting a crossfade from whatever is showing now. */
-function retarget(tone: Tone, key: ToneKey, t: number) {
+/** Point a tone at a new key, starting a crossfade from whatever is showing now (or switching at once if `instant`). */
+function retarget(tone: Tone, key: ToneKey, t: number, instant = false) {
   if (tone.key === key) return;
-  tone.from = clamp01((t - tone.at) / TONE_FADE_MS) < 0.5 ? tone.from : tone.key;
+  tone.from = instant ? key : clamp01((t - tone.at) / TONE_FADE_MS) < 0.5 ? tone.from : tone.key;
   tone.key = key;
   tone.at = t;
 }
@@ -293,6 +293,16 @@ export default function SocialGraph(props: Props) {
     if (u.groupId === null || u.away) return "stone";
     const g = groups.current.get(u.groupId);
     return g ? groupHue(g) : "stone";
+  };
+  /**
+   * Whether a circle is actually inside its bubble's outline right now. One dragged out, dropped in open space or
+   * still travelling over from another bubble isn't, and shows gray until it's back in.
+   */
+  const insideBubble = (n: NodeData) => {
+    if (n.user.groupId === null) return false;
+    const b = drawnBubble.current.get(n.user.groupId);
+    if (!b) return true; // outline not drawn yet (first frames): keep the hue rather than flash gray
+    return Math.hypot((n.x ?? 0) - b.x, (n.y ?? 0) - b.y) <= b.r;
   };
   /** how big a bubble should be for its head count (the same size the layout reserves for it) */
   const bubbleRadius = useCallback((groupId: number) => {
@@ -772,7 +782,9 @@ export default function SocialGraph(props: Props) {
         else retarget(tone, key, t);
       }
       for (const n of nodes.values()) {
-        retarget(n.tone, toneFor(n.user), t);
+        // outside a bubble is gray, at once; coming back in fades into the bubble's hue
+        const key = insideBubble(n) ? toneFor(n.user) : "stone";
+        retarget(n.tone, key, t, key === "stone");
         n.color = resolve(n.tone, pal, t);
       }
 
