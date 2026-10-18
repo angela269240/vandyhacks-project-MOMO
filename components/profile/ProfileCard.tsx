@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { useGraph, useInterests } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api } from "@/lib/client/api";
-import { INTERESTS } from "@/lib/interests";
-import type { GraphUser } from "@/lib/types";
+import { useGroupColor } from "@/lib/client/groupHues";
+import { identityColor, interestColor } from "@/lib/colors";
+import type { GraphGroup, GraphUser } from "@/lib/types";
 import { Avatar } from "./Avatar";
 
 /** lucide dropped brand marks; a minimal LinkedIn glyph in the same stroke style. */
@@ -27,14 +28,16 @@ function LinkedinIcon(props: React.SVGProps<SVGSVGElement>) {
 type Props = {
   user: GraphUser;
   groupName?: string | null;
+  /** every community they've joined (their node shows in only one at a time) */
+  communities?: GraphGroup[];
   onClose: () => void;
   onEditProfile: () => void;
   style?: React.CSSProperties;
 };
 
-/** Mini profile window. Shared interests glow; the map highlights mutual-connection edges while it's open. */
+/** Mini profile window. Shared interests are tinted; the map highlights mutual-connection edges while it's open. */
 export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCard(
-  { user, groupName, onClose, onEditProfile, style },
+  { user, groupName, communities = [], onClose, onEditProfile, style },
   ref,
 ) {
   const interests = useInterests();
@@ -43,7 +46,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
   const [busy, setBusy] = useState(false);
   const isMe = me?.id === user.id;
   const mine = new Set(me?.interestIds ?? []);
-  const color = INTERESTS.find((i) => i.id === user.interestIds[0])?.color ?? "#60A5FA";
+  const groupColor = useGroupColor();
   const sharedInterests = isMe ? 0 : user.interestIds.filter((id) => mine.has(id)).length;
 
   // Mutual friends: their accepted friendships that are also mine.
@@ -79,25 +82,34 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
 
   return (
     // Outer div is positioned by the caller (transform written per frame); inner div owns the pop-in animation.
-    <div ref={ref} style={style} className="fixed top-0 left-0 z-30 w-[300px] max-w-[calc(100vw-24px)]">
+    <div
+      ref={ref}
+      style={style}
+      role="dialog"
+      aria-label={`${user.name}'s profile`}
+      className="pointer-events-auto fixed top-0 left-0 z-30 w-[300px] max-w-[calc(100vw-24px)]"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
     <motion.div
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.94 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="glass relative rounded-2xl p-4 shadow-2xl shadow-black/50"
+      className="glass elevated relative rounded-2xl p-4"
       onClick={(e) => e.stopPropagation()}
     >
       <button
         aria-label="Close"
         onClick={onClose}
-        className="absolute top-3 right-3 rounded-full p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+        className="absolute top-3 right-3 rounded-full p-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"
       >
         <X className="size-4" />
       </button>
 
       <div className="flex items-center gap-3 pr-6">
-        <Avatar name={user.name} url={user.avatarUrl} color={color} size={48} />
+        <Avatar name={user.name} url={user.avatarUrl} color={identityColor(user)} size={48} />
         <div className="min-w-0">
           <div className="truncate font-heading text-base font-semibold">{user.name}</div>
           <div className="truncate text-xs text-muted-foreground">
@@ -105,6 +117,18 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
           </div>
         </div>
       </div>
+
+      {communities.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          <span className="tracking-wider uppercase">Communities</span>
+          {communities.map((g) => (
+            <span key={g.id} className="flex items-center gap-1 text-foreground/80">
+              <span className="size-1.5 rounded-full" style={{ background: groupColor(g) }} />
+              {g.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {user.bio && <p className="mt-3 text-sm leading-relaxed text-foreground/85">{user.bio}</p>}
 
@@ -122,8 +146,8 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
             <Badge
               key={id}
               variant="outline"
-              className={shared ? "tag-glow" : "border-white/15 text-muted-foreground"}
-              style={{ "--glow": interest.color } as React.CSSProperties}
+              className={shared ? "tag-active" : "border-foreground/15 text-muted-foreground"}
+              style={{ "--tag": interestColor(id) } as React.CSSProperties}
             >
               {interest.name}
             </Badge>
@@ -139,9 +163,9 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
                 key={u.id}
                 name={u.name}
                 url={u.avatarUrl}
-                color={INTERESTS.find((i) => i.id === u.interestIds[0])?.color ?? "#60A5FA"}
+                color={identityColor(u)}
                 size={20}
-                className="ring-2 ring-[#0A1230]"
+                className="ring-2 ring-background"
               />
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { NEON } from "./colors";
+import { HUES, interestHue } from "./colors";
 import type { Interest } from "./types";
 
 export const INTEREST_NAMES = [
@@ -27,5 +27,6 @@ export const INTEREST_NAMES = [
 export const INTERESTS: Interest[] = INTEREST_NAMES.map((name, i) => ({
   id: i + 1,
   name,
-  color: NEON[i % NEON.length],
+  // stored swatch only; the UI renders interestColor(id), which follows the theme
+  color: HUES.find((h) => h.key === interestHue(i + 1))!.swatch,
 }));

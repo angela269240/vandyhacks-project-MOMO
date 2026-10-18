@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshGraph } from "@/hooks/useGraph";
 import { MeProvider, useMe } from "@/hooks/useMe";
 import { useLobby } from "@/hooks/useRealtime";
+import { useTheme } from "@/hooks/useTheme";
 import { sceneEvents } from "@/lib/client/scene";
 import type { LobbyEvent } from "@/lib/types";
 
@@ -42,6 +43,10 @@ function SignedInLobbyListener() {
   return null;
 }
 
+function ThemedToaster() {
+  return <Toaster position="bottom-left" theme={useTheme()} />;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig value={{ revalidateOnFocus: true, shouldRetryOnError: false }}>
@@ -49,7 +54,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <TooltipProvider delay={250}>
           <LobbyListener />
           {children}
-          <Toaster position="top-center" theme="dark" />
+          <ThemedToaster />
         </TooltipProvider>
       </MeProvider>
     </SWRConfig>

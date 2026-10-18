@@ -17,6 +17,8 @@ type MeContext = {
   /** saves the identity on this device and enters Orbit with it */
   signIn: (identity: Identity) => void;
   refreshMe: () => Promise<unknown>;
+  /** optimistic local update of my profile (e.g. bookmarks) */
+  setMe: (user: User) => void;
   friends: FriendState;
   refreshFriends: () => Promise<unknown>;
 };
@@ -74,6 +76,7 @@ export function MeProvider({ children }: { children: React.ReactNode }) {
       setIdentity,
       signIn,
       refreshMe: () => meQuery.mutate(),
+      setMe: (user: User) => void meQuery.mutate(user, { revalidate: false }),
       friends: friendsQuery.data ?? EMPTY_FRIENDS,
       refreshFriends: () => friendsQuery.mutate(),
     }),

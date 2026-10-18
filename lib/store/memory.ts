@@ -1,13 +1,15 @@
 import { INTERESTS } from "../interests";
 import { buildSeedWorld } from "../seed-data";
-import type { ChatHour, ChatMessage, Group, ProfileInput, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, Group, ProfileInput, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
 type Friendship = { a: string; b: string; status: "pending" | "accepted"; requestedBy: string };
 
+type StoredUser = User & { deviceKeyHash: string; bookmarks: Bookmark[] };
+
 type State = {
-  users: Map<string, User & { deviceKeyHash: string }>;
+  users: Map<string, StoredUser>;
   groups: Map<number, Group>;
   /** groupId -> user holding the room's screen share slot */
   screens: Map<number, string>;
@@ -21,7 +23,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 
 function seededState(): State {
   const now = new Date();
-  const world = buildSeedWorld(now);
+  const world = buildSeedWorld(now, { crowd: true }); // local demo only: +100 people, two 40-person groups
   const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
@@ -30,6 +32,7 @@ function seededState(): State {
       id,
       name: g.name,
       color: g.color,
+      category: g.category,
       createdBy: world.users[g.createdByIndex].id,
       createdAt: now.toISOString(),
       lastExitAt: null,
@@ -46,6 +49,8 @@ function seededState(): State {
       currentGroupId: u.groupIndex === null ? null : u.groupIndex + 1,
       inRoom: u.inRoom,
       leftGroupAt: u.leftMinutesAgo === null ? null : new Date(now.getTime() - u.leftMinutesAgo * 60_000).toISOString(),
+      memberOf: u.memberOf.map((i) => i + 1),
+      bookmarks: [],
       deviceKeyHash: "seed",
     });
   }
@@ -58,13 +63,20 @@ function seededState(): State {
 }
 
 // Survive Next.js dev hot reloads: one world per server process.
-const g = globalThis as unknown as { __socialMapperMemory?: State };
-const state = () => (g.__socialMapperMemory ??= seededState());
+// Bump the key when the stored shape changes so a running dev server reseeds instead of crashing.
+const g = globalThis as unknown as { __socialMapperMemoryV4?: State };
+const state = () => (g.__socialMapperMemoryV4 ??= seededState());
 
-function publicUser(u: User & { deviceKeyHash: string }): User {
+function publicUser(u: StoredUser): User {
   const { deviceKeyHash, ...rest } = u;
   void deviceKeyHash;
-  return { ...rest, interestIds: [...u.interestIds] };
+  const live = (ids: number[]) => ids.filter((id) => state().groups.has(id));
+  return {
+    ...rest,
+    interestIds: [...u.interestIds],
+    memberOf: live(u.memberOf),
+    bookmarks: u.bookmarks.map((b) => ({ ...b, groupIds: live(b.groupIds) })),
+  };
 }
 
 function activeCount(groupId: number) {
@@ -81,7 +93,7 @@ export const memoryStore: Store = {
   },
 
   async createUser(input: ProfileInput, id: string, deviceKeyHash: string) {
-    const user = {
+    const user: StoredUser = {
       id,
       name: input.name,
       linkedin: input.linkedin,
@@ -91,6 +103,8 @@ export const memoryStore: Store = {
       currentGroupId: null,
       inRoom: false,
       leftGroupAt: null,
+      memberOf: [],
+      bookmarks: [],
       deviceKeyHash,
     };
     state().users.set(id, user);
@@ -114,6 +128,7 @@ export const memoryStore: Store = {
     if (patch.bio !== undefined) u.bio = patch.bio;
     if (patch.interestIds !== undefined) u.interestIds = patch.interestIds;
     if (patch.avatarUrl !== undefined) u.avatarUrl = patch.avatarUrl;
+    if (patch.bookmarks !== undefined) u.bookmarks = patch.bookmarks;
     return publicUser(u);
   },
 
@@ -123,12 +138,20 @@ export const memoryStore: Store = {
     return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, lingerMs, vacancyMs);
   },
 
-  async createGroup(name, color, createdBy) {
+  async createGroup(name, color, category, createdBy) {
     const s = state();
     const key = name.trim().toLowerCase();
     for (const grp of s.groups.values()) if (grp.name.trim().toLowerCase() === key) return null;
     const id = s.nextGroupId++;
-    const group: Group = { id, name: name.trim(), color, createdBy, createdAt: new Date().toISOString(), lastExitAt: null };
+    const group: Group = {
+      id,
+      name: name.trim(),
+      color,
+      category,
+      createdBy,
+      createdAt: new Date().toISOString(),
+      lastExitAt: null,
+    };
     s.groups.set(id, group);
     return group;
   },
@@ -148,6 +171,7 @@ export const memoryStore: Store = {
     u.currentGroupId = groupId;
     u.inRoom = true;
     u.leftGroupAt = null;
+    if (!u.memberOf.includes(groupId)) u.memberOf.push(groupId);
     group.lastExitAt = null;
     if (fromGroupId !== null && fromGroupId !== groupId) {
       if (s.screens.get(fromGroupId) === userId) s.screens.delete(fromGroupId);
@@ -222,7 +246,10 @@ export const memoryStore: Store = {
       s.groups.delete(grp.id);
       s.screens.delete(grp.id);
       for (const [k, c] of s.chat) if (c.groupId === grp.id) s.chat.delete(k);
-      for (const u of s.users.values()) if (u.currentGroupId === grp.id) u.currentGroupId = null;
+      for (const u of s.users.values()) {
+        if (u.currentGroupId === grp.id) u.currentGroupId = null;
+        u.memberOf = u.memberOf.filter((id) => id !== grp.id);
+      }
       expired.push({ group: grp, chat });
     }
     return expired;

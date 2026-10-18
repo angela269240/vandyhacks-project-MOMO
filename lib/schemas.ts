@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CATEGORIES } from "./categories";
 import { INTERESTS } from "./interests";
 
 const optionalText = (max: number) =>
@@ -32,9 +33,22 @@ export const profileSchema = z.object({
   interestIds: interestIdsSchema,
 });
 
+export const bookmarksSchema = z
+  .array(
+    z.object({
+      id: z.string().min(1).max(40),
+      name: z.string().trim().min(1, "Bookmark needs a name").max(40),
+      groupIds: z.array(z.number().int()).max(200),
+    }),
+  )
+  .max(50);
+
 export const profilePatchSchema = profileSchema.partial().extend({
   avatarUrl: z.string().max(500).nullish(),
+  bookmarks: bookmarksSchema.optional(),
 });
+
+export const categorySchema = z.enum(CATEGORIES, { message: "Pick a category" });
 
 export const groupNameSchema = z
   .string()

@@ -359,3 +359,25 @@ Reduced-motion handling, empty states, toasts, loading shimmer on the map, mobil
 | LiveKit free-tier limits | Fine for a demo. Lobby participants are data-only and don't publish tracks. |
 | No auth | Clearly labeled demo. Keep the device key hash check so random curl requests can't impersonate users. |
 | Mic/screen permissions in the demo browser | Pre-grant on the demo machines. Test on Chrome. |
+
+---
+
+## 11. Revision 2 (implemented)
+
+| Change | How it works |
+|---|---|
+| Drag nodes | Only your own circle can be dragged. Dropping it inside another bubble joins that community and makes it your active room. Dropping it in open space parks it there. |
+| 2x nodes | Map nodes have a 14-unit radius (was 7), with spacing, collision and blob padding scaled up to match. |
+| Exiting a room | Your node stays in the bubble (shown as "away"). The view zooms back out around it. |
+| Rooms keep the map layout | Entering a bubble zooms the live map into it, so people and edges stay exactly where they were. The room is just controls layered on top: header, dock, chat and screen shares. Speakers tremble in place on the map, and there is no separate ring layout any more. |
+| You at the center | Your current bubble (or you, if you're in none) takes the center slot. Other focused bubbles spiral out around it. |
+| Focused bubbles | A bubble is focused if it passes the filter bar and the search box, and (under a finite degrees setting) has someone visible in it. Focused bubbles glow, are full size and fit in view. Unfocused ones are smaller, don't glow, and line up in a strip to the right that you reach by panning sideways. |
+| Bookmarks | `users.bookmarks` is a JSON array of `{ id, name, groupIds }`, returned only to the owner. The bookmark icon at the upper left slides in a translucent pane with your lists. The ＋ at the bottom adds a list. Clicking a list focuses just its bubbles. Double-clicking a bubble opens an "Add to: …" mini window. |
+| Category tags | `interest_groups.category` is one of 10 tags, picked when the group is created: Academics, Tech, Science, Health & Pre-Med, Arts & Media, Sports & Fitness, Games, Career & Startups, Languages & Culture, Social. |
+| Filter bar | A translucent rounded bar holds Select all, Select none, a chip for each bookmark and tag, and a search box. Chips cycle on → off → ✕ exclude → no rule. Excludes win. While any chip is on or off, a bubble must match an "on" chip. Search matches bookmark, tag, username or bubble name. |
+| Degrees slider | A bottom bar reading "SHOW N DEGREES OF CONNECTION" (1–5 or ∞), measured from you. People further away are hidden. |
+| Many communities | A new `group_members` table records every community someone joins. Their node appears in only one active room (`users.current_group_id`). Memberships stay when they leave and are listed on the profile card. |
+| White mode | A switch at the upper right sets light or dark CSS tokens. The choice is saved in localStorage and applied before paint. Canvas colors and ambient lights adapt too. |
+| Cumulative notes document | Deferred (WIP). |
+
+Schema changes: `interest_groups.category`, `users.bookmarks`, and a new `group_members` table. Run `npm run db:migrate -- --reset` and then `npm run db:seed` on an existing database.

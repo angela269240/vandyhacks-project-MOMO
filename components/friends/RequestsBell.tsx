@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api } from "@/lib/client/api";
-import { INTERESTS } from "@/lib/interests";
+import { identityColor } from "@/lib/colors";
 import { Avatar } from "../profile/Avatar";
 
 export function RequestsBell() {
@@ -36,7 +36,7 @@ export function RequestsBell() {
       >
         <Bell />
         {incoming.length > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-[#F472B6] text-[10px] font-bold text-black shadow-[0_0_10px_#F472B6]">
+          <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
             {incoming.length}
           </span>
         )}
@@ -48,11 +48,11 @@ export function RequestsBell() {
         ) : (
           <ul className="flex flex-col gap-2">
             {incoming.map((u) => (
-              <li key={u.id} className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-white/5">
+              <li key={u.id} className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-foreground/5">
                 <Avatar
                   name={u.name}
                   url={u.avatarUrl}
-                  color={INTERESTS.find((i) => i.id === u.interestIds[0])?.color ?? "#60A5FA"}
+                  color={identityColor(u)}
                   size={32}
                 />
                 <span className="min-w-0 flex-1 truncate text-sm">{u.name}</span>

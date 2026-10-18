@@ -1,5 +1,7 @@
 export type Interest = { id: number; name: string; color: string };
 
+export type Bookmark = { id: string; name: string; groupIds: number[] };
+
 export type User = {
   id: string;
   name: string;
@@ -10,25 +12,30 @@ export type User = {
   currentGroupId: number | null;
   inRoom: boolean;
   leftGroupAt: string | null;
+  /** every community they've joined; their node shows in only one (currentGroupId) at a time */
+  memberOf: number[];
+  /** only returned to the owner */
+  bookmarks?: Bookmark[];
 };
 
 export type Group = {
   id: number;
   name: string;
   color: string;
+  category: string;
   createdBy: string | null;
   createdAt: string;
   lastExitAt: string | null;
 };
 
 /** A user as shown on the map: placed in a group only while active or within the 24h "away" window. */
-export type GraphUser = Omit<User, "currentGroupId" | "inRoom" | "leftGroupAt"> & {
+export type GraphUser = Omit<User, "currentGroupId" | "inRoom" | "leftGroupAt" | "bookmarks"> & {
   groupId: number | null;
   inRoom: boolean;
   away: boolean;
 };
 
-export type GraphGroup = Group & { activeCount: number };
+export type GraphGroup = Group & { activeCount: number; memberCount: number };
 
 export type Edge = { source: string; target: string };
 
