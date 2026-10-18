@@ -21,7 +21,7 @@ import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
 import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
 import { scene } from "@/lib/client/scene";
-import { identityColor } from "@/lib/colors";
+import { INTERESTS } from "@/lib/interests";
 import type { Group, GraphGroup, GraphUser } from "@/lib/types";
 import { DegreesSlider } from "./DegreesSlider";
 import { FilterBar } from "./FilterBar";
@@ -215,7 +215,7 @@ export function MapScene() {
                 >
                   <Bookmark className="size-[18px]" />
                 </button>
-                <span className="size-2.5 rounded-full bg-primary" aria-hidden />
+                <span className="size-2.5 rounded-full bg-[#22D3EE] shadow-[0_0_14px_#22D3EE]" aria-hidden />
                 <h1 className="font-heading text-lg font-semibold tracking-tight">Social Mapper</h1>
               </div>
               <div className="pointer-events-auto flex items-center gap-2">
@@ -237,7 +237,7 @@ export function MapScene() {
                       <Avatar
                         name={me.name}
                         url={me.avatarUrl}
-                        color={identityColor(me)}
+                        color={INTERESTS.find((i) => i.id === me.interestIds[0])?.color ?? "#60A5FA"}
                         size={36}
                       />
                     </button>
