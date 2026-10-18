@@ -232,6 +232,58 @@ html.light [data-slot="sheet-overlay"] {
   to { transform: rotate(360deg); }
 }
 
+/* ---- welcome / voice onboarding ----
+   Pinned to the warm-redesign palette (charcoal + bone + clay; cream in light mode) so it holds
+   regardless of the app-wide theme. Redefines the shadcn tokens so form controls inside follow. */
+.welcome {
+  --welcome-bg-0: #1c1b19;
+  --welcome-bg-1: #2a2724;
+  --welcome-glow: rgba(218, 153, 130, 0.16);
+  --background: #1f1e1c;
+  --foreground: #ece6db;
+  --card: rgba(42, 40, 37, 0.88);
+  --card-foreground: #ece6db;
+  --popover: rgba(40, 38, 35, 0.96);
+  --popover-foreground: #ece6db;
+  --primary: #da9982;
+  --primary-foreground: #1f1e1c;
+  --muted: rgba(236, 230, 219, 0.06);
+  --muted-foreground: #a59d91;
+  --accent: rgba(236, 230, 219, 0.08);
+  --accent-foreground: #ece6db;
+  --destructive: #e18881;
+  --border: rgba(236, 230, 219, 0.1);
+  --input: rgba(236, 230, 219, 0.14);
+  --ring: rgba(218, 153, 130, 0.55);
+  --elev: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
+  background: radial-gradient(ellipse at 50% 38%, var(--welcome-bg-1), var(--welcome-bg-0) 72%), var(--welcome-bg-0);
+  color: var(--foreground);
+  color-scheme: dark;
+}
+html.light .welcome {
+  --welcome-bg-0: #efe8db;
+  --welcome-bg-1: #faf6ee;
+  --welcome-glow: rgba(149, 86, 64, 0.12);
+  --background: #f4eee3;
+  --foreground: #2e2924;
+  --card: rgba(255, 252, 246, 0.9);
+  --card-foreground: #2e2924;
+  --popover: rgba(255, 252, 246, 0.97);
+  --popover-foreground: #2e2924;
+  --primary: #955640;
+  --primary-foreground: #fffaf3;
+  --muted: rgba(60, 45, 30, 0.05);
+  --muted-foreground: #6e655a;
+  --accent: rgba(60, 45, 30, 0.07);
+  --accent-foreground: #2e2924;
+  --destructive: #a74541;
+  --border: rgba(60, 45, 30, 0.13);
+  --input: rgba(60, 45, 30, 0.18);
+  --ring: rgba(149, 86, 64, 0.45);
+  --elev: 0 1px 2px rgb(60 40 20 / 0.06), 0 8px 24px rgb(60 40 20 / 0.1);
+  color-scheme: light;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
