@@ -31,9 +31,12 @@ export type Layout = {
 export const BUBBLE_PADDING = 32;
 export const clusterRadius = (n: number, scale = 1) => (62 + 70 * Math.sqrt(Math.max(n, 1))) * scale;
 
+export const LAYOUT_GAP = 140; // leaves room for the two label lines above each bubble
+
 /**
  * Places bubbles along a golden-angle spiral, pushing each one outward until it clears every bubble
  * already placed, so a 40-person bubble gets the room it needs without spreading out the small ones.
+ * `priority` bubbles (search matches) take the middle: the first one sits at the center, the rest spiral out first.
  */
 export function computeLayout(
   focused: number[],
@@ -41,18 +44,21 @@ export function computeLayout(
   myGroupId: number | null,
   sizes: Map<number, number> = new Map(),
   unfocusedScale = 0.55,
+  priority: number[] = [],
 ): Layout {
   const anchors = new Map<number, Pt2>();
   const placed: { p: Pt2; r: number }[] = [];
-  const GAP = 140; // leaves room for the two label lines above each bubble
+  const GAP = LAYOUT_GAP;
   const clear = (p: Pt2, r: number) => placed.every((o) => Math.hypot(p.x - o.p.x, p.y - o.p.y) >= r + o.r + GAP);
 
-  const ordered = [...focused].sort((a, b) => a - b);
-  const mineFocused = myGroupId !== null && ordered.includes(myGroupId);
-  if (mineFocused) ordered.splice(ordered.indexOf(myGroupId), 1);
-  // Slot 0 (the center) is my bubble, or me on my own; everyone else spirals out around it.
-  const centerR = mineFocused ? clusterRadius(sizes.get(myGroupId) ?? 1) : 40;
-  if (mineFocused) anchors.set(myGroupId, { x: 0, y: 0 });
+  const first = priority.filter((id) => focused.includes(id)).sort((a, b) => a - b);
+  const rest = focused.filter((id) => !first.includes(id)).sort((a, b) => a - b);
+  const ordered = [...first, ...rest];
+  const centerId = first[0] ?? (myGroupId !== null && ordered.includes(myGroupId) ? myGroupId : null);
+  if (centerId !== null) ordered.splice(ordered.indexOf(centerId), 1);
+  // Slot 0 (the center) is my bubble (or the best search match), or me on my own; everyone else spirals out around it.
+  const centerR = centerId !== null ? clusterRadius(sizes.get(centerId) ?? 1) : 40;
+  if (centerId !== null) anchors.set(centerId, { x: 0, y: 0 });
   placed.push({ p: { x: 0, y: 0 }, r: centerR });
 
   ordered.forEach((id, i) => {
@@ -82,7 +88,7 @@ export function computeLayout(
       x += r + 60;
     });
 
-  return { anchors, ringRadius, centerOnMe: !mineFocused };
+  return { anchors, ringRadius, centerOnMe: centerId === null };
 }
 
 export function ringPoint(id: string, radius: number): Pt2 {

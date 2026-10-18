@@ -38,15 +38,27 @@ export function passesChips(g: GraphGroup, chips: Chip[], states: Record<string,
   return !includeRules || included;
 }
 
-/** Free-text search across bubble name, tag, bookmark names and member usernames. */
-export function passesSearch(g: GraphGroup, query: string, bookmarks: Bookmark[], users: GraphUser[]) {
+export type SearchMatches = { groupIds: Set<number>; userIds: Set<string> };
+
+/**
+ * What the map highlights for a search: bubbles by name, tag or bookmark name, and people by name.
+ * Null when the box is empty. Unlike the chips, search never hides anything; it only highlights and pulls matches in.
+ */
+export function searchMatches(query: string, groups: GraphGroup[], users: GraphUser[], bookmarks: Bookmark[]): SearchMatches | null {
   const q = query.trim().toLowerCase();
-  if (!q) return true;
-  if (g.name.toLowerCase().includes(q) || g.category.toLowerCase().includes(q)) return true;
-  if (bookmarks.some((b) => b.groupIds.includes(g.id) && b.name.toLowerCase().includes(q))) return true;
-  return users.some(
-    (u) => (u.groupId === g.id || u.memberOf.includes(g.id)) && u.name.toLowerCase().includes(q),
+  if (!q) return null;
+  const groupIds = new Set(
+    groups
+      .filter(
+        (g) =>
+          g.name.toLowerCase().includes(q) ||
+          g.category.toLowerCase().includes(q) ||
+          bookmarks.some((b) => b.groupIds.includes(g.id) && b.name.toLowerCase().includes(q)),
+      )
+      .map((g) => g.id),
   );
+  const userIds = new Set(users.filter((u) => u.name.toLowerCase().includes(q)).map((u) => u.id));
+  return { groupIds, userIds };
 }
 
 /** Everyone within `degrees` friendship hops of `me` (Infinity = everyone reachable or not). */

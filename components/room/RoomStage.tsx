@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { hashString } from "@/lib/colors";
+import { scene } from "@/lib/client/scene";
 import type { GraphUser } from "@/lib/types";
-import { RoomBubble, blobPath, type BubbleEls } from "./RoomBubble";
+import { RoomBubble, type BubbleEls } from "./RoomBubble";
 import { RoomFriendshipEdges, type DrawnEdge, type EdgeEls } from "./RoomFriendshipEdges";
 import { RoomMember, type NodeEls, type StageMember } from "./RoomMember";
-import { assignSeats, seatAt } from "./roomLayout";
+import { stageCircle } from "./roomLayout";
 
 type Props = {
+  /** the map bubble this room is a zoom into */
+  groupId: number | null;
   members: StageMember[];
   /** accepted friendships across the graph: id -> friend ids */
   friendsOf: Map<string, Set<string>>;
@@ -74,43 +76,37 @@ function useWithLeaving(members: StageMember[]) {
   );
 }
 
-/** The radial room: a softly tinted bubble, friendship lines, and people floating in stable seats. */
-export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover, onSelect, getLevel }: Props) {
+/** A circle as an SVG path, so it can share the outline/halo paths with the bubble's other layers. */
+const circlePath = (cx: number, cy: number, r: number) =>
+  `M ${(cx - r).toFixed(1)} ${cy.toFixed(1)} a ${r.toFixed(1)} ${r.toFixed(1)} 0 1 0 ${(r * 2).toFixed(1)} 0 a ${r.toFixed(1)} ${r.toFixed(1)} 0 1 0 ${(-r * 2).toFixed(1)} 0 Z`;
+
+/**
+ * The room is a true zoom into its map bubble: the map's camera is framed so the bubble fills this stage, and
+ * every person, line and the bubble itself are drawn exactly where (and as big as) the map draws them right
+ * now. Nothing is re-seated or re-laid-out, so zooming in or out lines circles up with circles and lines with lines.
+ */
+export function RoomStage({ groupId, members, friendsOf, color, meId, hoveredId, onHover, onSelect, getLevel }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { w, h } = useSize(wrapRef);
   const rendered = useWithLeaving(members);
 
-  // ---- geometry ----
-  const R = Math.max(60, Math.min(w, h) / 2 - 18);
-  // Small stages (phone with chat open): smaller circles, names on hover/focus only, so nobody overlaps.
-  const compact = R < 150;
-  const nodeR = compact ? Math.max(10, Math.min(18, R * 0.14)) : Math.max(17, Math.min(30, R * 0.095));
-  const usable = Math.max(0, R - nodeR - (compact ? 8 : 34)); // room for names under the outer ring
-  const cx = w / 2;
-  const cy = h / 2;
-
-  const [seats] = useState(() => new Map<string, number>());
-  const presentIds = members.map((m) => m.user.id).join(",");
-  const seatMap = useMemo(
-    () => new Map(assignSeats(seats, presentIds ? presentIds.split(",") : [], meId)),
-    [seats, presentIds, meId],
-  );
-
-  const geometry = useMemo(() => {
-    const targets = new Map<string, Pt>();
-    const entries = new Map<string, Pt>();
-    const exits = new Map<string, Pt>();
-    for (const m of rendered) {
-      const id = m.user.id;
-      const seat = seatAt(seatMap.get(id) ?? 0);
-      // the center seat has no direction of its own; send it out downward
-      const angle = seat.x === 0 && seat.y === 0 ? Math.PI / 2 : Math.atan2(seat.y, seat.x);
-      targets.set(id, { x: cx + seat.x * usable, y: cy + seat.y * usable });
-      entries.set(id, { x: cx + Math.cos(angle) * (R - nodeR), y: cy + Math.sin(angle) * (R - nodeR) });
-      exits.set(id, { x: cx + Math.cos(angle) * (R + nodeR * 2 + 40), y: cy + Math.sin(angle) * (R + nodeR * 2 + 40) });
-    }
-    return { targets, entries, exits };
-  }, [rendered, seatMap, cx, cy, usable, R, nodeR]);
+  // ---- geometry: frame the map so the bubble fills this stage ----
+  const circle = stageCircle(w, h);
+  // Small stages (phone with chat open): names on hover/focus only, so nobody overlaps.
+  const compact = circle.r < 150;
+  /** on-screen radius of an ordinary node at the map's current zoom (updated from the map each frame) */
+  const [nodeR, setNodeR] = useState(24);
+  const framed = useRef(false);
+  const headCount = members.length;
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (groupId === null || !el || !w) return;
+    const rect = el.getBoundingClientRect();
+    const c = stageCircle(w, h);
+    // the first frame continues the zoom in from the map; later ones (chat opening, someone joining) are quick
+    scene.mapApi?.frameGroup(groupId, { x: rect.left + c.x, y: rect.top + c.y, r: c.r }, framed.current ? 350 : 450);
+    framed.current = true;
+  }, [groupId, w, h, headCount]);
 
   // ---- edges: accepted friendships between people on stage; fade when one end is leaving ----
   const related = useMemo(() => {
@@ -154,73 +150,95 @@ export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover,
   }, []);
   const registerBubble = useCallback((els: BubbleEls | null) => (bubbleEls.current = els), []);
 
-  const latest = useRef({ rendered, edges, geometry, R, cx, cy, nodeR, getLevel });
+  const latest = useRef({ groupId, rendered, edges, meId, getLevel });
   useEffect(() => {
-    latest.current = { rendered, edges, geometry, R, cx, cy, nodeR, getLevel };
+    latest.current = { groupId, rendered, edges, meId, getLevel };
   });
 
-  // ---- one loop: ease toward seats, gentle float, speaking ripples, edges follow drawn positions ----
+  // ---- one loop: copy the map's positions, speaking ripples, edges follow drawn positions ----
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const pos = new Map<string, Pt>();
-    const drawn = new Map<string, Pt>();
+    const radius = new Map<string, number>();
     const wasSpeaking = new Set<string>();
-    const bubble = { r: 0, cx: 0, cy: 0 };
+    let lastNodeR = 0;
     let last = performance.now();
     let raf = 0;
 
     const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
       const s = latest.current;
+      const api = scene.mapApi;
+      const wrap = wrapRef.current;
+      if (!api || !wrap || s.groupId === null) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const t = now / 1000;
-      const ease = reduced ? 1 : 1 - Math.exp(-dt / 0.16);
+      const rect = wrap.getBoundingClientRect();
+      const snap = api.roomSnapshot(s.groupId, s.rendered.map((m) => m.user.id));
 
-      if (s.R && bubbleEls.current) {
-        if (!bubble.r) Object.assign(bubble, { r: s.R * 0.72, cx: s.cx, cy: s.cy });
-        const k = reduced ? 1 : 1 - Math.exp(-dt / 0.22);
-        bubble.r += (s.R - bubble.r) * k;
-        bubble.cx += (s.cx - bubble.cx) * k;
-        bubble.cy += (s.cy - bubble.cy) * k;
-        const d = blobPath(bubble.cx, bubble.cy, bubble.r, reduced ? 0 : t);
+      // the map's own size for an ordinary circle (yours is drawn 1.3x, as on the map)
+      let ordinary = 0;
+      for (const [id, p] of snap.people) {
+        ordinary = id === s.meId ? p.r / 1.3 : p.r;
+        if (id !== s.meId) break;
+      }
+      if (ordinary && Math.abs(ordinary - lastNodeR) > 0.5) {
+        lastNodeR = ordinary;
+        setNodeR(ordinary);
+      }
+      const nodeRadius = lastNodeR || 24;
+
+      const b = snap.bubble;
+      const center = b ? { x: b.x - rect.left, y: b.y - rect.top } : { x: rect.width / 2, y: rect.height / 2 };
+      const bubbleR = b?.r ?? Math.min(rect.width, rect.height) / 2;
+      if (bubbleEls.current) {
+        const d = circlePath(center.x, center.y, bubbleR);
         const { outline, halo, glow, rings } = bubbleEls.current;
         outline.setAttribute("d", d);
         halo.setAttribute("d", d);
-        glow.setAttribute("cx", String(bubble.cx));
-        glow.setAttribute("cy", String(bubble.cy));
-        glow.setAttribute("r", String(bubble.r * 1.3));
-        rings.setAttribute("transform", `translate(${bubble.cx} ${bubble.cy}) scale(${bubble.r})`);
+        glow.setAttribute("cx", String(center.x));
+        glow.setAttribute("cy", String(center.y));
+        glow.setAttribute("r", String(bubbleR * 1.3));
+        rings.setAttribute("transform", `translate(${center.x} ${center.y}) scale(${bubbleR})`);
       }
 
-      drawn.clear();
       for (const m of s.rendered) {
         const id = m.user.id;
         const el = nodeEls.current.get(id);
-        const target = (m.leaving ? s.geometry.exits : s.geometry.targets).get(id);
-        if (!el || !target) continue;
+        if (!el) continue;
+        const onMap = snap.people.get(id);
         let p = pos.get(id);
-        if (!p) {
-          p = { ...(s.geometry.entries.get(id) ?? target) };
-          pos.set(id, p);
+        if (m.leaving) {
+          // slide straight out past the bubble's edge from wherever they were
+          const from = p ?? (onMap ? { x: onMap.x - rect.left, y: onMap.y - rect.top } : center);
+          const angle = Math.atan2(from.y - center.y, from.x - center.x) || Math.PI / 2;
+          const out = bubbleR + nodeRadius * 2 + 40;
+          const target = { x: center.x + Math.cos(angle) * out, y: center.y + Math.sin(angle) * out };
+          const k = reduced ? 1 : 1 - Math.exp(-dt / 0.2);
+          p = { x: from.x + (target.x - from.x) * k, y: from.y + (target.y - from.y) * k };
+        } else if (onMap) {
+          p = { x: onMap.x - rect.left, y: onMap.y - rect.top };
+        } else {
+          // not on the map yet (just joined): wait in the middle of the bubble
+          const from = p ?? center;
+          const k = reduced ? 1 : 1 - Math.exp(-dt / 0.16);
+          p = { x: from.x + (center.x - from.x) * k, y: from.y + (center.y - from.y) * k };
         }
-        const k = m.leaving ? (reduced ? 1 : 1 - Math.exp(-dt / 0.2)) : ease;
-        p.x += (target.x - p.x) * k;
-        p.y += (target.y - p.y) * k;
-        const phase = (hashString(id) % 628) / 100;
-        const x = p.x + (reduced ? 0 : Math.sin(t * 0.55 + phase) * 1.5);
-        const y = p.y + (reduced ? 0 : Math.cos(t * 0.45 + phase * 1.3) * 2.5);
-        drawn.set(id, { x, y });
-        el.root.setAttribute("transform", `translate(${x.toFixed(2)} ${y.toFixed(2)})`);
+        pos.set(id, p);
+        const r = onMap?.r ?? (m.isMe ? nodeRadius * 1.3 : nodeRadius);
+        radius.set(id, r);
+        el.root.setAttribute("transform", `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})`);
 
         // Speaking: driven by LiveKit's speaking flag (props) and live audio level (read here, not via React).
         if (m.speaking && m.mic !== "off") {
           const level = Math.min(1, 0.3 + s.getLevel(id) * 2.2);
-          el.ring.setAttribute("r", String(s.nodeR + 7 + level * 4)); // outside the white "you" ring
+          el.ring.setAttribute("r", String(r + 7 + level * 4)); // outside the white "you" ring
           el.ring.setAttribute("opacity", String(0.55 + 0.45 * level));
           el.ripples.forEach((c, i) => {
             if (reduced) return c.setAttribute("opacity", "0");
             const ph = (t * 0.85 + i / 3) % 1;
-            c.setAttribute("r", String(s.nodeR + 8 + ph * (8 + 16 * level)));
+            c.setAttribute("r", String(r + 8 + ph * (8 + 16 * level)));
             c.setAttribute("opacity", String((1 - ph) * 0.5 * level));
           });
           const a = reduced ? 0 : level * 0.7;
@@ -233,25 +251,30 @@ export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover,
           wasSpeaking.delete(id);
         }
       }
-      for (const id of [...pos.keys()]) if (!s.rendered.some((m) => m.user.id === id)) pos.delete(id);
+      for (const id of [...pos.keys()]) {
+        if (s.rendered.some((m) => m.user.id === id)) continue;
+        pos.delete(id);
+        radius.delete(id);
+      }
 
       // Edges end at the circles' rims, not their centers.
-      const gap = s.nodeR + 4;
       for (const e of s.edges) {
         const els = edgeEls.current.get(e.key);
-        const a = drawn.get(e.a);
-        const b = drawn.get(e.b);
-        if (!els || !a || !b) continue;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
+        const a = pos.get(e.a);
+        const c = pos.get(e.b);
+        if (!els || !a || !c) continue;
+        const ga = (radius.get(e.a) ?? nodeRadius) + 2;
+        const gc = (radius.get(e.b) ?? nodeRadius) + 2;
+        const dx = c.x - a.x;
+        const dy = c.y - a.y;
         const len = Math.hypot(dx, dy);
-        if (len < gap * 2) continue;
+        if (len < ga + gc) continue;
         const ux = dx / len;
         const uy = dy / len;
-        const x1 = String(a.x + ux * gap);
-        const y1 = String(a.y + uy * gap);
-        const x2 = String(b.x - ux * gap);
-        const y2 = String(b.y - uy * gap);
+        const x1 = String(a.x + ux * ga);
+        const y1 = String(a.y + uy * ga);
+        const x2 = String(c.x - ux * gc);
+        const y2 = String(c.y - uy * gc);
         for (const line of [els.line, els.glow]) {
           line.setAttribute("x1", x1);
           line.setAttribute("y1", y1);
@@ -263,8 +286,6 @@ export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover,
         els.grad.setAttribute("x2", x2);
         els.grad.setAttribute("y2", y2);
       }
-
-      raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
@@ -285,7 +306,7 @@ export function RoomStage({ members, friendsOf, color, meId, hoveredId, onHover,
               <RoomMember
                 key={m.user.id}
                 m={m}
-                r={nodeR}
+                r={m.isMe ? nodeR * 1.3 : nodeR}
                 compact={compact}
                 leaving={m.leaving}
                 focus={focusOf(m.user.id)}
