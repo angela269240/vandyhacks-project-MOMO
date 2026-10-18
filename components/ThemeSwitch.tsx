@@ -4,7 +4,7 @@ import { Moon, Sun } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { setTheme, useTheme } from "@/hooks/useTheme";
 
-/** Little switch in the upper right: on = white mode. */
+/** Little switch in the upper right: on = light mode. */
 export function ThemeSwitch() {
   const theme = useTheme();
   return (
@@ -13,7 +13,7 @@ export function ThemeSwitch() {
       <Switch
         checked={theme === "light"}
         onCheckedChange={(on) => setTheme(on ? "light" : "dark")}
-        aria-label="White mode"
+        aria-label="Light mode"
       />
       <Sun className="size-3.5" aria-hidden />
     </label>

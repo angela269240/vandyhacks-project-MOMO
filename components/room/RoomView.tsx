@@ -10,6 +10,7 @@ import { useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { useConfig, useSseChannel } from "@/hooks/useRealtime";
 import { api, fetcher, loadIdentity } from "@/lib/client/api";
+import { useGroupColor } from "@/lib/client/groupHues";
 import { scene } from "@/lib/client/scene";
 import type { ChatHour, Group, RoomEvent } from "@/lib/types";
 import { ChatSheet } from "./ChatSheet";
@@ -70,6 +71,7 @@ export function RoomView() {
   const config = useConfig();
   const { ready, identity, me } = useMe();
   const { data: graph, mutate: mutateGraph } = useGraph();
+  const groupColor = useGroupColor();
 
   const [joined, setJoined] = useState<Group | null>(null);
   const [lkToken, setLkToken] = useState<string | null>(null);
@@ -255,7 +257,8 @@ export function RoomView() {
   const groupId = joined?.id ?? null;
   const people = useMemo(() => new Map((graph?.users ?? []).map((u) => [u.id, u])), [graph]);
   const here = (graph?.users ?? []).filter((u) => u.groupId === groupId && u.inRoom).length;
-  const color = joined?.color ?? graph?.groups.find((g) => g.name.toLowerCase() === name.toLowerCase())?.color ?? "#22D3EE";
+  const roomGroup = joined ?? graph?.groups.find((g) => g.name.toLowerCase() === name.toLowerCase()) ?? { id: -1, name };
+  const color = groupColor(roomGroup);
   const meId = identity?.userId ?? null;
 
   return (
@@ -290,7 +293,7 @@ export function RoomView() {
           <ChevronLeft className="size-4" /> Map
         </button>
         <div className="glass flex h-10 items-center gap-2.5 rounded-full px-4">
-          <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
+          <span className="size-2.5 rounded-full" style={{ background: color }} />
           <span className="max-w-[40vw] truncate font-heading font-semibold">{joined?.name ?? name}</span>
           {joined && <span className="hidden text-xs text-muted-foreground sm:inline">{joined.category}</span>}
           <span className="text-xs text-muted-foreground">{here} here</span>
