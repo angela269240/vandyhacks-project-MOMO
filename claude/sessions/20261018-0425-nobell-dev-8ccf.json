@@ -34,14 +34,16 @@
     "typecheck": "pass",
     "lint": "pass",
     "build": "not run",
-    "manual": "tsx stats: 75 users, 75 unique names, 25 groups, 0 groupless, 120 friendships, min 1 in-room per group (sizes 1-7). In-memory demo /api/graph: 25 groups, 75 seed users, no empty bubbles; map screenshot shows the new bubbles."
+    "manual": "tsx stats: 75 users, 75 unique names, 25 groups, 0 groupless, 120 friendships, min 1 in-room per group (sizes 1-7). In-memory demo /api/graph: 25 groups, 75 seed users, no empty bubbles; map screenshot shows the new bubbles. Shared DB reseeded with `npm run db:seed` at the human's request: 75 seed users (0 groupless), 25 seed groups each with someone in the room; 13 real users and 2 user-made groups untouched."
   },
   "next_steps": [
-    "Human: decide whether to reseed the SHARED DB with `npm run db:seed` (deletes and recreates seed-* users and the seed groups; user-created profiles/groups untouched)."
+    "Merge nobell/dev into main (human's call) so local in-memory worlds match the shared DB."
   ],
   "open_questions": [
     "With all 75 in groups there are no wanderers on the outer ring anymore; add a few back if the ring matters for the demo."
   ],
   "blockers": [],
-  "conflict_notes": []
+  "conflict_notes": [
+    "Reseeding deletes and recreates the seed groups, so any real user whose active room was a seed group is now wandering (ON DELETE SET NULL) and lost that group membership; friendships/DMs with seed users were removed with them."
+  ]
 }
