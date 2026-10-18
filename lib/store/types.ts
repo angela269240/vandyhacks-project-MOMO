@@ -17,7 +17,7 @@ export interface Store {
   getDeviceKeyHash(id: string): Promise<string | null>;
   updateUser(id: string, patch: UserPatch): Promise<User | null>;
 
-  getGraph(now: Date, lingerMs: number, vacancyMs: number): Promise<Graph>;
+  getGraph(now: Date, lingerMs: number): Promise<Graph>;
 
   /** Returns null when the (case-insensitive) name is taken. */
   createGroup(name: string, color: string, category: string, createdBy: string): Promise<Group | null>;
@@ -37,11 +37,9 @@ export interface Store {
 
   appendChat(groupId: number, message: ChatMessage, hourStart: string): Promise<void>;
   getChat(groupId: number, limitHours: number): Promise<ChatHour[]>;
-  listUnsummarizedHours(before: string, minMessages: number): Promise<{ groupId: number; hour: ChatHour }[]>;
-  setSummary(groupId: number, hourStart: string, summary: string): Promise<void>;
 
-  /** Removes groups with no active members whose last exit is older than the vacancy window. */
-  expireGroups(now: Date, vacancyMs: number): Promise<ExpiredGroup[]>;
+  /** Removes groups with no active members whose last exit is older than the linger window. */
+  expireGroups(now: Date, lingerMs: number): Promise<ExpiredGroup[]>;
 
   getFriendState(userId: string): Promise<FriendState>;
   requestFriend(from: string, to: string): Promise<"pending" | "accepted" | "exists">;

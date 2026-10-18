@@ -163,6 +163,9 @@ export function RoomView() {
     [open, router],
   );
 
+  // Clicking the map background while in a room minimizes it (the overlay usually covers the map, but not always).
+  useEffect(() => sceneEvents.on("exit-room", () => minimize()), [minimize]);
+
   // ---- leave: media stops and presence ends right away; my node slides out, then the room contracts ----
   const leaveRoom = useCallback(async () => {
     if (exiting.current) return;

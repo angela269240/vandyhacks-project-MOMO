@@ -1,4 +1,4 @@
--- Social Mapper schema for OCI Autonomous Database (Oracle 23ai).
+-- Orbit schema for OCI Autonomous Database (Oracle 23ai).
 -- Run with `npm run db:migrate` (statements are split on lines containing only "/").
 
 CREATE TABLE interests (
@@ -52,9 +52,9 @@ CREATE TABLE user_interests (
 /
 CREATE TABLE group_chat_hours (
   group_id    NUMBER REFERENCES interest_groups(id) ON DELETE CASCADE,
-  hour_start  TIMESTAMP WITH TIME ZONE,
+  -- LOCAL TIME ZONE: Oracle rejects TIMESTAMP WITH TIME ZONE in a primary key (ORA-02329).
+  hour_start  TIMESTAMP WITH LOCAL TIME ZONE,
   messages    JSON NOT NULL,
-  summary     VARCHAR2(1000),
   PRIMARY KEY (group_id, hour_start)
 )
 /

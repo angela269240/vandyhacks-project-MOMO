@@ -10,12 +10,12 @@ const grotesk = Space_Grotesk({ variable: "--font-grotesk", subsets: ["latin"] }
 
 export const metadata: Metadata = {
   title: "Orbit",
-  description: "Find your people. Explore your campus.",
+  description: "Redefining social media, for learning. Find your people in live interest groups.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1f1e1c",
-  colorScheme: "dark light",
+  themeColor: "#03050c",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -57,7 +57,7 @@ function seededState(): State {
   for (const f of world.friendships) state.friendships.set(pairKey(f.a, f.b), f);
   for (const c of world.chats) {
     const groupId = c.groupIndex + 1;
-    state.chat.set(chatKey(groupId, c.hourStart), { groupId, hourStart: c.hourStart, messages: c.messages, summary: c.summary });
+    state.chat.set(chatKey(groupId, c.hourStart), { groupId, hourStart: c.hourStart, messages: c.messages });
   }
   return state;
 }
@@ -132,10 +132,10 @@ export const memoryStore: Store = {
     return publicUser(u);
   },
 
-  async getGraph(now, lingerMs, vacancyMs) {
+  async getGraph(now, lingerMs) {
     const s = state();
     const friendships = [...s.friendships.values()].filter((f) => f.status === "accepted");
-    return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, lingerMs, vacancyMs);
+    return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, lingerMs);
   },
 
   async createGroup(name, color, category, createdBy) {
@@ -214,7 +214,7 @@ export const memoryStore: Store = {
     const key = chatKey(groupId, hourStart);
     const bucket = s.chat.get(key);
     if (bucket) bucket.messages.push(message);
-    else s.chat.set(key, { groupId, hourStart, messages: [message], summary: null });
+    else s.chat.set(key, { groupId, hourStart, messages: [message] });
   },
 
   async getChat(groupId, limitHours) {
@@ -222,23 +222,12 @@ export const memoryStore: Store = {
       .filter((c) => c.groupId === groupId)
       .sort((a, b) => a.hourStart.localeCompare(b.hourStart))
       .slice(-limitHours)
-      .map(({ hourStart, messages, summary }) => ({ hourStart, messages: [...messages], summary }));
+      .map(({ hourStart, messages }) => ({ hourStart, messages: [...messages] }));
   },
 
-  async listUnsummarizedHours(before, minMessages) {
-    return [...state().chat.values()]
-      .filter((c) => c.summary === null && c.hourStart < before && c.messages.length >= minMessages)
-      .map(({ groupId, hourStart, messages, summary }) => ({ groupId, hour: { hourStart, messages, summary } }));
-  },
-
-  async setSummary(groupId, hourStart, summary) {
-    const bucket = state().chat.get(chatKey(groupId, hourStart));
-    if (bucket) bucket.summary = summary;
-  },
-
-  async expireGroups(now, vacancyMs) {
+  async expireGroups(now, lingerMs) {
     const s = state();
-    const cutoff = now.getTime() - vacancyMs;
+    const cutoff = now.getTime() - lingerMs;
     const expired = [];
     for (const grp of [...s.groups.values()]) {
       if (activeCount(grp.id) > 0 || !grp.lastExitAt || new Date(grp.lastExitAt).getTime() > cutoff) continue;

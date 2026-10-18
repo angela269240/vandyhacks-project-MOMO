@@ -14,6 +14,7 @@ type SceneEvents = {
   "map-resume": void;
   /** the room overlay is fully covering the map */
   "map-pause": void;
+  "exit-room": void;
 };
 
 type Handler<T> = (payload: T) => void;

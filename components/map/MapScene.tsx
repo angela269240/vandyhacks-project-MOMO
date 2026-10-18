@@ -24,7 +24,7 @@ import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
 import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
 import { scene, sceneEvents } from "@/lib/client/scene";
-import { identityColor } from "@/lib/colors";
+import { INTERESTS } from "@/lib/interests";
 import type { Group, GraphGroup, GraphUser } from "@/lib/types";
 import { DegreesSlider } from "./DegreesSlider";
 import { FilterBar } from "./FilterBar";
@@ -175,7 +175,7 @@ export function MapScene() {
 
   return (
     <>
-      <div className="fixed inset-0" aria-label="Social map" role="application">
+      <div className="fixed inset-0" aria-label="Orbit map" role="application">
         {graph && (
           <SocialGraph
             graph={graph}
@@ -191,7 +191,10 @@ export function MapScene() {
             onNodeClick={(u: GraphUser) => setSelectedId((cur) => (cur === u.id ? null : u.id))}
             onGroupClick={(g) => enterGroup(g)}
             onGroupDoubleClick={(g, at) => me && setAddTo({ group: g, at })}
-            onBackgroundClick={() => setSelectedId(null)}
+            onBackgroundClick={() => {
+              setSelectedId(null);
+              if (roomName) sceneEvents.emit("exit-room");
+            }}
             onDropOnGroup={dropOnGroup}
           />
         )}
@@ -249,7 +252,7 @@ export function MapScene() {
                       <Avatar
                         name={me.name}
                         url={me.avatarUrl}
-                        color={identityColor(me)}
+                        color={INTERESTS.find((i) => i.id === me.interestIds[0])?.color ?? "#60A5FA"}
                         size={36}
                       />
                     </button>
