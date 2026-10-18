@@ -96,6 +96,8 @@ export function RoomStage({ groupId, members, friendsOf, color, meId, hoveredId,
   const compact = circle.r < 150;
   /** on-screen radius of an ordinary node at the map's current zoom (updated from the map each frame) */
   const [nodeR, setNodeR] = useState(24);
+  /** each person's size relative to nodeR, as the map draws them (you 1.3, others by friendship distance) */
+  const [sizeOf, setSizeOf] = useState<Map<string, number>>(() => new Map());
   const framed = useRef(false);
   const headCount = members.length;
   useEffect(() => {
@@ -162,6 +164,7 @@ export function RoomStage({ groupId, members, friendsOf, color, meId, hoveredId,
     const radius = new Map<string, number>();
     const wasSpeaking = new Set<string>();
     let lastNodeR = 0;
+    const sizes = new Map<string, number>();
     let last = performance.now();
     let raf = 0;
 
@@ -177,17 +180,26 @@ export function RoomStage({ groupId, members, friendsOf, color, meId, hoveredId,
       const rect = wrap.getBoundingClientRect();
       const snap = api.roomSnapshot(s.groupId, s.rendered.map((m) => m.user.id));
 
-      // the map's own size for an ordinary circle (yours is drawn 1.3x, as on the map)
-      let ordinary = 0;
-      for (const [id, p] of snap.people) {
-        ordinary = id === s.meId ? p.r / 1.3 : p.r;
-        if (id !== s.meId) break;
-      }
+      // The map's unit circle size at this zoom, read off your own circle (drawn 1.3x); signed out, everyone is 1x.
+      // Everyone else is sized relative to it the way the map sizes them, so circles line up with circles.
+      const mine = s.meId ? snap.people.get(s.meId) : undefined;
+      const ordinary = mine ? mine.r / 1.3 : (snap.people.values().next().value?.r ?? 0);
       if (ordinary && Math.abs(ordinary - lastNodeR) > 0.5) {
         lastNodeR = ordinary;
         setNodeR(ordinary);
       }
       const nodeRadius = lastNodeR || 24;
+      if (ordinary) {
+        let changed = false;
+        for (const [id, p] of snap.people) {
+          const f = Math.round((p.r / ordinary) * 100) / 100;
+          if (sizes.get(id) !== f) {
+            sizes.set(id, f);
+            changed = true;
+          }
+        }
+        if (changed) setSizeOf(new Map(sizes));
+      }
 
       const b = snap.bubble;
       const center = b ? { x: b.x - rect.left, y: b.y - rect.top } : { x: rect.width / 2, y: rect.height / 2 };
@@ -306,7 +318,7 @@ export function RoomStage({ groupId, members, friendsOf, color, meId, hoveredId,
               <RoomMember
                 key={m.user.id}
                 m={m}
-                r={m.isMe ? nodeR * 1.3 : nodeR}
+                r={nodeR * (sizeOf.get(m.user.id) ?? (m.isMe ? 1.3 : 1))}
                 compact={compact}
                 leaving={m.leaving}
                 focus={focusOf(m.user.id)}

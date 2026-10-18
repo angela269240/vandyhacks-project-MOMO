@@ -94,6 +94,10 @@ type Props = {
 };
 
 const NODE_R = 42;
+/** your own circle is drawn this much larger than NODE_R; everyone else is sized relative to it by friendship distance */
+const ME_SCALE = 1.3;
+/** share of your circle's *area* by friendship distance (radius scales with the square root) */
+const DEGREE_AREA = { 1: 0.75, 2: 0.5, other: 0.25 } as const;
 /** collision radius, kept from the old 28px nodes so the bigger circles still fit the same bubbles */
 const COLLIDE_R = 60;
 /** how hard people are pulled back into their bubble, per tick, before scaling by the sim's heat */
@@ -163,6 +167,26 @@ export default function SocialGraph(props: Props) {
   const [nodes] = useState(() => new Map<string, NodeData>());
   const [links] = useState(() => new Map<string, LinkData>());
   const neighbors = useRef(new Map<string, Set<string>>());
+  /** friendship distance from you: 1 = friend, 2 = friend of a friend; anyone else is absent */
+  const degreeOf = useRef(new Map<string, 1 | 2>());
+  const computeDegrees = (meId: string | null) => {
+    const out = new Map<string, 1 | 2>();
+    const friends = meId ? (neighbors.current.get(meId) ?? new Set<string>()) : new Set<string>();
+    for (const id of friends) out.set(id, 1);
+    for (const id of friends) for (const o of neighbors.current.get(id) ?? []) if (o !== meId && !out.has(o)) out.set(o, 2);
+    degreeOf.current = out;
+  };
+  /**
+   * How big someone is drawn, in multiples of NODE_R: you at ME_SCALE, and everyone else as a share of your
+   * circle's area by friendship distance. With nobody signed in there is no "you", so everyone stays at 1.
+   */
+  const sizeFactor = (n: NodeData) => {
+    const meId = propsRef.current.meId;
+    if (n.id === meId) return ME_SCALE;
+    if (!meId) return 1;
+    const d = degreeOf.current.get(n.id);
+    return ME_SCALE * Math.sqrt(d ? DEGREE_AREA[d] : DEGREE_AREA.other);
+  };
   const groups = useRef(new Map<number, GraphGroup>());
   const layout = useRef<Layout>({ anchors: new Map(), ringRadius: 400, centerOnMe: true });
   const hulls = useRef(new Map<number, Pt[]>());
@@ -404,7 +428,7 @@ export default function SocialGraph(props: Props) {
           // the same bob the map draws this frame (renderPos, inlined: it's declared further down)
           const wobble = bob(n.phase, frame.current.t, motionOK.current);
           const p = fg.graph2ScreenCoords(n.x + wobble.dx, (n.y ?? 0) + wobble.dy);
-          const r = NODE_R * (isFocused(n) ? 1 : UNFOCUSED_SCALE) * (id === propsRef.current.meId ? 1.3 : 1) * k;
+          const r = NODE_R * (isFocused(n) ? 1 : UNFOCUSED_SCALE) * sizeFactor(n) * k;
           people.set(id, { x: p.x, y: p.y, r, color: n.color });
         }
         return { bubble: b && c ? { x: c.x, y: c.y, r: b.r * k } : null, people };
@@ -529,11 +553,15 @@ export default function SocialGraph(props: Props) {
       structural = true;
     }
     neighbors.current = nbrs;
+    computeDegrees(props.meId);
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- node objects are long-lived and mutated by d3
     if (structural) setData({ nodes: [...nodes.values()], links: [...links.values()] });
     else if (moved) fgRef.current?.d3ReheatSimulation();
   }, [props.graph, nodes, links, targetFor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // signing in or out changes who counts as a friend
+  useEffect(() => computeDegrees(props.meId), [props.meId]);
 
   // Entering/leaving a room fades everything else.
   useEffect(() => {
@@ -725,7 +753,7 @@ export default function SocialGraph(props: Props) {
 
     const born = n.bornAt ? clamp01((f.t - n.bornAt) / 650) : 1;
     const isMe = n.id === meId;
-    const base = NODE_R * (focused ? 1 : UNFOCUSED_SCALE) * (isMe ? 1.3 : 1);
+    const base = NODE_R * (focused ? 1 : UNFOCUSED_SCALE) * sizeFactor(n);
     const r = base * (hovered || selected ? 1.2 : 1) * Math.max(0, easeOutBack(born)) * (drag.current?.node === n ? 1.15 : 1);
 
     ctx.save();
@@ -925,7 +953,7 @@ export default function SocialGraph(props: Props) {
       if (!isVisible(n)) continue;
       const pos = renderPos(n);
       const scale = isFocused(n) ? 1 : UNFOCUSED_SCALE;
-      const radius = NODE_R * scale * (n.id === propsRef.current.meId ? 1.3 : 1) * 1.2;
+      const radius = NODE_R * scale * sizeFactor(n) * 1.2;
       if (Math.hypot(point.x - pos.x, point.y - pos.y) <= radius) return n;
     }
     return null;
@@ -1101,7 +1129,7 @@ export default function SocialGraph(props: Props) {
             const n = obj as NodeData;
             const pos = renderPos(n);
             const scale = isFocused(n) ? 1 : UNFOCUSED_SCALE;
-            const radius = NODE_R * scale * (n.id === propsRef.current.meId ? 1.3 : 1) * 1.2;
+            const radius = NODE_R * scale * sizeFactor(n) * 1.2;
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
             ctx.fillStyle = color;
