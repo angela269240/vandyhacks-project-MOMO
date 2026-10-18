@@ -21,7 +21,17 @@ import {
   type Bounds,
   type Translate,
 } from "./camera";
-import { bob, BUBBLE_PADDING, clusterRadius, computeLayout, LAYOUT_GAP, ringPoint, type Layout } from "./layout";
+import {
+  bob,
+  BUBBLE_PADDING,
+  clusterRadius,
+  computeLayout,
+  LAYOUT_GAP,
+  ringPoint,
+  type CenterMark,
+  type Layout,
+  type LabelBox,
+} from "./layout";
 
 /** A palette key plus where it's fading in from, so a change of bubble crossfades instead of snapping. */
 type Tone = { key: ToneKey; from: ToneKey; at: number };
@@ -137,6 +147,14 @@ const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeOutBack = (p: number) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
 const smoothPath = line<Pt>().curve(curveCatmullRomClosed.alpha(0.6));
+/** the second label line over a focused bubble */
+const groupSubtitle = (g: GraphGroup) => `${g.category} · ${g.activeCount ? `${g.activeCount} here now` : "empty · fading in 24h"}`;
+/** label sizes in screen px: bubble names sit above the bubble, your name under your circle (see the draw code) */
+const LABEL_PX = { focusedH: 40, unfocusedH: 22, meH: 20, pad: 12 };
+/** screen margins the first view leaves for the top bar and the degrees slider (as fitFocused does) */
+const FIT_PAD = { x: 140, y: 190 };
+const MIN_ZOOM = 0.15;
+const MAX_FIT_ZOOM = 1.6;
 
 function readPalette(): Palette {
   const css = getComputedStyle(document.documentElement);
@@ -377,6 +395,19 @@ export default function SocialGraph(props: Props) {
           n.vx = (n.vx ?? 0) + dx * k;
           n.vy = (n.vy ?? 0) + dy * k;
         }
+        // People in no bubble never sit inside one: a friendship line can tug them toward a bubble, so push them back out.
+        for (const n of anchored) {
+          if (n.user.groupId !== null || n.fx !== undefined) continue;
+          for (const [groupId, a] of layout.current.anchors) {
+            const clearance = bubbleRadius(groupId) + NODE_R * (n.id === propsRef.current.meId ? 1.3 : 1) + 24;
+            const dx = (n.x ?? 0) - a.x;
+            const dy = (n.y ?? 0) - a.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d >= clearance) continue;
+            n.vx = (n.vx ?? 0) + (dx / d) * (clearance - d) * 0.25;
+            n.vy = (n.vy ?? 0) + (dy / d) * (clearance - d) * 0.25;
+          }
+        }
       },
       { initialize: (ns: NodeData[]) => (anchored = ns) },
     );
@@ -416,11 +447,11 @@ export default function SocialGraph(props: Props) {
         if (![...nodes.values()].some(filter)) return;
         holdCamera(ms);
         const box = fg.getGraphBbox(filter);
-        const padX = 140;
-        const padY = 190; // room for the top bar and the degrees slider below
+        const padX = FIT_PAD.x;
+        const padY = FIT_PAD.y; // room for the top bar and the degrees slider below
         const w = Math.max(box.x[1] - box.x[0], 1);
         const h = Math.max(box.y[1] - box.y[0], 1);
-        const k = Math.min(1.6, Math.max(0.15, Math.min((size.w - padX * 2) / w, (size.h - padY * 2) / h)));
+        const k = Math.min(MAX_FIT_ZOOM, Math.max(MIN_ZOOM, Math.min((size.w - padX * 2) / w, (size.h - padY * 2) / h)));
         fg.centerAt((box.x[0] + box.x[1]) / 2, (box.y[0] + box.y[1]) / 2 + 10 / k, ms);
         fg.zoom(k, ms);
       },
@@ -489,7 +520,7 @@ export default function SocialGraph(props: Props) {
         return { bubble: b && c ? { x: c.x, y: c.y, r: b.r * k } : null, people };
       },
     });
-  }, [size.w, size.h, targetFor, nodes, applyCollide, memberSpread, bubbleWorld]);
+  }, [size.w, size.h, targetFor, nodes, applyCollide, memberSpread, bubbleWorld, bubbleRadius]);
 
   // ---- layout: focused bubbles in the middle (mine at the center), the rest in a side strip ----
   const focusKey = [...props.focusedGroupIds].sort((a, b) => a - b).join(",");
@@ -498,6 +529,52 @@ export default function SocialGraph(props: Props) {
   // matched bubbles take the middle; matched people don't move bubbles, so only group matches count here
   const searchKey = props.search ? [...props.search.groupIds].sort((a, b) => a - b).join(",") : "";
   const arrangedFor = useRef<string | null>(null);
+  const measureCtx = useRef<CanvasRenderingContext2D | null>(null);
+  /**
+   * How much room labels take on the map when it's viewed at zoom k. They're drawn at a fixed size on screen, so the
+   * further out you look, the more map they cover: the layout has to reserve that room or names land on other bubbles.
+   */
+  const labelRoom = (focusedIds: Set<number>, k: number) => {
+    const ctx = (measureCtx.current ??= document.createElement("canvas").getContext("2d"));
+    const width = (text: string, font: string) => {
+      if (!ctx) return text.length * 8;
+      ctx.font = font;
+      return ctx.measureText(text).width;
+    };
+    const labels = new Map<number, LabelBox>();
+    for (const g of propsRef.current.graph.groups) {
+      const focused = focusedIds.has(g.id);
+      const px = focused
+        ? Math.max(width(g.name, `600 15px ${fonts.current.heading}`), width(groupSubtitle(g), `500 10.5px ${fonts.current.sans}`))
+        : width(g.name, `600 12px ${fonts.current.heading}`);
+      labels.set(g.id, { w: (px + LABEL_PX.pad) / k, h: (focused ? LABEL_PX.focusedH : LABEL_PX.unfocusedH) / k });
+    }
+    const meUser = propsRef.current.graph.users.find((u) => u.id === propsRef.current.meId);
+    const me: CenterMark = {
+      // your circle is 1.3x with two rings around it
+      r: NODE_R * 1.3 + 10 / k,
+      label: meUser
+        ? { w: (width(`${meUser.name} (you)`, `500 11.5px ${fonts.current.sans}`) + LABEL_PX.pad) / k, h: LABEL_PX.meH / k }
+        : { w: 0, h: 0 },
+    };
+    return { labels, me };
+  };
+  /** the zoom fitFocused will land on for this layout (focused bubbles plus you, in the space between the bars) */
+  const fitZoom = (L: Layout, focusedIds: number[], sizes: Map<number, number>) => {
+    let x0 = 0, x1 = 0, y0 = 0, y1 = 0; // you, at the center
+    for (const id of focusedIds) {
+      const a = L.anchors.get(id);
+      if (!a) continue;
+      // people float inside the outline, so their spread is a little less than the bubble
+      const r = clusterRadius(sizes.get(id) ?? 1) - BUBBLE_PADDING - NODE_R;
+      x0 = Math.min(x0, a.x - r);
+      x1 = Math.max(x1, a.x + r);
+      y0 = Math.min(y0, a.y - r);
+      y1 = Math.max(y1, a.y + r);
+    }
+    const fit = Math.min((window.innerWidth - FIT_PAD.x * 2) / Math.max(x1 - x0, 1), (window.innerHeight - FIT_PAD.y * 2) / Math.max(y1 - y0, 1));
+    return Math.min(MAX_FIT_ZOOM, Math.max(MIN_ZOOM, fit));
+  };
   useEffect(() => {
     const ids = props.graph.groups.map((g) => g.id);
     const focused = ids.filter((id) => props.focusedGroupIds.has(id));
@@ -525,7 +602,17 @@ export default function SocialGraph(props: Props) {
     arrangedFor.current = arrangement;
     if (!keep) {
       const priority = props.search ? ids.filter((id) => props.search!.groupIds.has(id)) : [];
-      layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE, priority);
+      // The room labels need depends on the zoom the first view lands on, which depends on the layout. Start sized for
+      // a close view and zoom the estimate out until the layout fits at the zoom its labels were sized for (labels a
+      // little bigger than needed, so the real fit never runs them into anything).
+      let k = MAX_FIT_ZOOM;
+      for (let round = 0; round < 8; round++) {
+        const { labels, me } = labelRoom(props.focusedGroupIds, k * 0.85);
+        layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE, priority, labels, me);
+        const fit = fitZoom(layout.current, focused, sizes);
+        if (fit >= k - 0.005) break;
+        k = fit;
+      }
     }
     // Bubble colors come from the unfiltered layout, so neighbors differ and filters never recolor anything.
     const full = computeLayout(ids, [], props.myGroupId, sizes, UNFOCUSED_SCALE);
@@ -766,8 +853,7 @@ export default function SocialGraph(props: Props) {
           if (focusedGroup) {
             ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
             ctx.fillStyle = pal.inkMuted;
-            const here = g.activeCount ? `${g.activeCount} here now` : "empty · fading in 24h";
-            ctx.fillText(`${g.category} · ${here}`, cx, top - 6 / gs - 17 / gs);
+            ctx.fillText(groupSubtitle(g), cx, top - 6 / gs - 17 / gs);
           }
           ctx.restore();
         }
