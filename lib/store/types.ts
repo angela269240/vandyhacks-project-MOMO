@@ -1,4 +1,5 @@
 import type { Bookmark, ChatHour, ChatMessage, DirectChat, FriendState, Graph, Group, GroupNotes, Interest, ProfileInput, Report, User } from "../types";
+import type { Linger } from "../time";
 
 export type UserPatch = Partial<ProfileInput> & { bookmarks?: Bookmark[] };
 
@@ -27,7 +28,7 @@ export interface Store {
   getDeviceKeyHash(id: string): Promise<string | null>;
   updateUser(id: string, patch: UserPatch): Promise<User | null>;
 
-  getGraph(now: Date, lingerMs: number): Promise<Graph>;
+  getGraph(now: Date, linger: Linger): Promise<Graph>;
 
   /** Returns null when the (case-insensitive) name is taken. */
   createGroup(name: string, color: string, category: string, createdBy: string): Promise<Group | null>;
@@ -57,8 +58,8 @@ export interface Store {
   /** Deletes notes files past their expiry. Returns how many were removed. */
   expireNotes(now: Date): Promise<number>;
 
-  /** Removes groups with no active members whose last exit is older than the linger window. */
-  expireGroups(now: Date, lingerMs: number): Promise<ExpiredGroup[]>;
+  /** Removes groups with no active members whose last exit is older than the group linger window. */
+  expireGroups(now: Date, groupLingerMs: number): Promise<ExpiredGroup[]>;
 
   /** Stores the hash of a one-time code for `key` (purpose + email), replacing any earlier one. */
   saveEmailCode(key: string, codeHash: string, expiresAt: Date): Promise<void>;

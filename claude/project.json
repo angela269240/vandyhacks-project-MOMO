@@ -120,7 +120,7 @@
     ".gitignore ignores /.claude/* except .claude/settings.json (the shared SessionStart hook). Personal settings go in .claude/settings.local.json.",
     "tsconfig.tsbuildinfo and next-env.d.ts are generated and ignored.",
     "SSE realtime only works in one process; on Vercel use LiveKit.",
-    "FAST_CLOCK=1 shrinks 24h linger to 2 minutes for demoing expiry.",
+    "FAST_CLOCK=1 shrinks the group linger and the away window (both 30 days) to 2 minutes for demoing expiry.",
     "Hourly GenAI chat summaries were removed (chore/remove-chat-summaries); PLAN.md still describes them.",
     "OCI region for the shared backend is us-chicago-1 (.env.example default says us-ashburn-1).",
     "Moderation must run before expire-groups each day, or it misses the chat of rooms being deleted.",

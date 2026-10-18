@@ -154,9 +154,11 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeOutBack = (p: number) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
 const smoothPath = line<Pt>().curve(curveCatmullRomClosed.alpha(0.6));
 /** the second label line over a focused bubble */
-const groupSubtitle = (g: GraphGroup) => `${g.category} · ${g.activeCount ? `${g.activeCount} here now` : "empty · fading in 24h"}`;
+const groupSubtitle = (g: GraphGroup) => `${g.category} · ${g.activeCount ? `${g.activeCount} here now` : "empty · fading in 30 days"}`;
 /** label sizes in screen px: bubble names sit above the bubble, your name under your circle (see the draw code) */
 const LABEL_PX = { focusedH: 40, unfocusedH: 22, meH: 20, pad: 12 };
+/** a bubble is named once its radius is this many px on screen */
+const LABEL_MIN_R = 24;
 /** screen margins the first view leaves for the top bar and the degrees slider (as fitFocused does) */
 const FIT_PAD = { x: 140, y: 190 };
 const MIN_ZOOM = 0.15;
@@ -584,6 +586,9 @@ export default function SocialGraph(props: Props) {
     const labels = new Map<number, LabelBox>();
     for (const g of propsRef.current.graph.groups) {
       const focused = focusedIds.has(g.id);
+      // A bubble too small on screen to carry its name (see LABEL_MIN_R) reserves no room for it: zoomed out, labels
+      // cover so much map that reserving them all spreads the bubbles far apart. The map hides any label without room.
+      if (clusterRadius(groupSizes.current.get(g.id) ?? 0, focused ? 1 : UNFOCUSED_SCALE) * k <= LABEL_MIN_R) continue;
       const px = focused
         ? Math.max(width(g.name, `600 15px ${fonts.current.heading}`), width(groupSubtitle(g), `500 10.5px ${fonts.current.sans}`))
         : width(g.name, `600 12px ${fonts.current.heading}`);
@@ -821,6 +826,8 @@ export default function SocialGraph(props: Props) {
       }
 
       hulls.current = new Map();
+      const circles: { x: number; y: number; r: number; id: number }[] = [];
+      const labelQueue: { g: GraphGroup; cx: number; top: number; r: number; focusedGroup: boolean; hovered: boolean; alpha: number }[] = [];
       for (const g of groups.current.values()) {
         const focusedGroup = propsRef.current.focusedGroupIds.has(g.id);
         const scale = focusedGroup ? 1 : UNFOCUSED_SCALE;
@@ -892,22 +899,43 @@ export default function SocialGraph(props: Props) {
         ctx.stroke();
         ctx.restore();
 
+        circles.push({ x: cx, y: cy, r, id: g.id });
         // named once the bubble is big enough on screen to carry a label (bigger groups keep theirs further out)
-        if (r * gs > 24 && !(roomGroupId === g.id)) {
-          ctx.save();
-          ctx.globalAlpha = alpha * (hovered ? 1 : 0.75);
-          ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.font = `600 ${(focusedGroup ? 15 : 12) / gs}px ${fonts.current.heading}`;
-          ctx.fillStyle = pal.ink;
-          ctx.fillText(g.name, cx, top - 6 / gs);
-          if (focusedGroup) {
-            ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
-            ctx.fillStyle = pal.inkMuted;
-            ctx.fillText(groupSubtitle(g), cx, top - 6 / gs - 17 / gs);
-          }
-          ctx.restore();
+        if (r * gs > LABEL_MIN_R && !(roomGroupId === g.id)) labelQueue.push({ g, cx, top, r, focusedGroup, hovered, alpha });
+      }
+
+      // Labels go on last, the hovered bubble's and then the biggest bubbles' first. The layout only reserves room for
+      // the labels it expects at the first view's zoom, so a name that would land on another bubble or label is left off.
+      const taken: { x0: number; y0: number; x1: number; y1: number }[] = [];
+      labelQueue.sort((a, b) => Number(b.hovered) - Number(a.hovered) || b.r - a.r);
+      for (const { g, cx, top, focusedGroup, hovered, alpha } of labelQueue) {
+        ctx.font = `600 ${(focusedGroup ? 15 : 12) / gs}px ${fonts.current.heading}`;
+        let w = ctx.measureText(g.name).width;
+        if (focusedGroup) {
+          ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
+          w = Math.max(w, ctx.measureText(groupSubtitle(g)).width);
         }
+        const box = { x0: cx - w / 2, x1: cx + w / 2, y0: top - (focusedGroup ? LABEL_PX.focusedH : LABEL_PX.unfocusedH) / gs, y1: top };
+        const clash =
+          taken.some((o) => box.x0 < o.x1 && o.x0 < box.x1 && box.y0 < o.y1 && o.y0 < box.y1) ||
+          circles.some(
+            (c) => c.id !== g.id && Math.hypot(Math.max(box.x0 - c.x, 0, c.x - box.x1), Math.max(box.y0 - c.y, 0, c.y - box.y1)) < c.r,
+          );
+        if (clash && !hovered) continue;
+        taken.push(box);
+        ctx.save();
+        ctx.globalAlpha = alpha * (hovered ? 1 : 0.75);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.font = `600 ${(focusedGroup ? 15 : 12) / gs}px ${fonts.current.heading}`;
+        ctx.fillStyle = pal.ink;
+        ctx.fillText(g.name, cx, top - 6 / gs);
+        if (focusedGroup) {
+          ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
+          ctx.fillStyle = pal.inkMuted;
+          ctx.fillText(groupSubtitle(g), cx, top - 6 / gs - 17 / gs);
+        }
+        ctx.restore();
       }
     },
     // keepCameraInBounds only reads refs

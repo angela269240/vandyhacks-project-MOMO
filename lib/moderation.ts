@@ -4,7 +4,7 @@ import { chatText, genaiConfigured, parseJson } from "./genai";
 import { archiveJson } from "./storage";
 import { getStore } from "./store";
 import type { NewReport } from "./store/types";
-import { lingerMs } from "./time";
+import { linger } from "./time";
 import type { ReportCategory, ReportSeverity } from "./types";
 
 /**
@@ -50,7 +50,7 @@ const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 async function gather(now: Date): Promise<Item[]> {
   const store = getStore();
   const since = now.getTime() - WINDOW_MS;
-  const graph = await store.getGraph(now, lingerMs());
+  const graph = await store.getGraph(now, linger());
   const userName = new Map(graph.users.map((u) => [u.id, u.name]));
   const groupName = new Map(graph.groups.map((g) => [g.id, g.name]));
   const items: Item[] = [];

@@ -1,0 +1,77 @@
+{
+  "id": "20261018-1038-fix-circle-spacing-134e",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "fix/circle-spacing",
+  "base": "0bec2ff",
+  "worktree": "/Users/home/Desktop/repositories/oraclehackathon26/momo-circle-spacing",
+  "started": "2026-10-18T15:38:49.657Z",
+  "ended": "2026-10-18T16:40:00Z",
+  "status": "done",
+  "goal": "Tighten map circle spacing; keep empty bubbles 30 days instead of 24h",
+  "summary": "Bubbles on the map were far apart because labelRoom reserved label room for every group, and labels are a fixed screen size: zoomed out, each label covers ~2000 world units, so the fit loop spiralled down to MIN_ZOOM with bubbles ~126px apart on screen (radius ~20px) for the 25-group seed world. labelRoom now skips groups whose bubble is <= LABEL_MIN_R (24px) on screen at that zoom (those labels were never drawn anyway). Since bubbles now sit tighter, labels are drawn after all bubbles with a greedy declutter: hovered first, then biggest bubbles; a label that would overlap another bubble or an already-drawn label is skipped (the hovered one always shows). Simulated gap for 25 groups: 126px -> 23px; 12 groups: 108px -> 26px; 6 groups unchanged (their labels are drawn and set the spacing). Second change: empty bubbles now linger 30 days after the last person leaves (was 24h). lib/time.ts splits lingerMs into groupLingerMs (30d) and awayMs (30 days, per the human: people who left stay 'away' in the bubble 30 days too); Store.getGraph takes a Linger {groupMs, awayMs}, expireGroups takes groupLingerMs. UI copy (RoomHeader, NewGroupDialog, map subtitle), README, .env.example and project.json updated. lib/types.ts comment updated. FAST_CLOCK=1 still shrinks both to 2 minutes.",
+  "claims": [
+    "components/map/SocialGraph.tsx",
+    "lib/time.ts",
+    "lib/store/graph.ts",
+    "lib/store/types.ts",
+    "lib/store/oracle.ts",
+    "lib/store/memory.ts",
+    "lib/moderation.ts",
+    "app/api/graph/route.ts",
+    "app/api/users/route.ts",
+    "app/api/cron/expire-groups/route.ts",
+    "components/room/RoomHeader.tsx",
+    "components/groups/NewGroupDialog.tsx",
+    "README.md",
+    ".env.example",
+    "claude/project.json",
+    "lib/types.ts"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx",
+    "lib/time.ts",
+    "lib/store/graph.ts",
+    "lib/store/types.ts",
+    "lib/store/oracle.ts",
+    "lib/store/memory.ts",
+    "lib/moderation.ts",
+    "app/api/graph/route.ts",
+    "app/api/users/route.ts",
+    "app/api/cron/expire-groups/route.ts",
+    "components/room/RoomHeader.tsx",
+    "components/groups/NewGroupDialog.tsx",
+    "README.md",
+    ".env.example",
+    "claude/project.json",
+    "lib/types.ts"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Hide colliding labels at draw time instead of reserving room for every label",
+      "why": "Reserving room for labels that may only appear at mid zoom is what spread the bubbles; decluttering keeps names off other bubbles without that cost"
+    },
+    {
+      "what": "Bubbles and the 'away' window are both 30 days, kept as two functions (groupLingerMs, awayMs)",
+      "why": "The human asked for both to be 30 days; separate names keep them independently tunable"
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "not run: could not start a dev server for this worktree from the agent; layout spacing checked with a tsx simulation of the fit loop; layout/camera tests pass; buildGraph checked with a tsx script: empty bubble shown at 0.5/10/29 days, gone at 31; away person re-checked after the 30-day change (see below)"
+  },
+  "next_steps": [
+    "Run the map and check bubble spacing and that group names don't overlap at the first view and while zooming in (not done in-session)"
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": [
+    "Branch `color` claims components/map/**; SocialGraph.tsx bubble-label drawing block moved below the bubble loop, so a merge there needs the label code kept in the new post-loop spot"
+  ]
+}
