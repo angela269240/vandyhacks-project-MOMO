@@ -372,7 +372,7 @@ export const oracleStore: Store = {
       const row = existing.rows?.[0];
       let result: "pending" | "accepted" | "exists" = "exists";
       if (!row) {
-        await conn.execute(`INSERT INTO friendships (user_a, user_b, requested_by) VALUES (:a, :b, :by)`, { a, b, by: from });
+        await conn.execute(`INSERT INTO friendships (user_a, user_b, requested_by) VALUES (:a, :b, :byUser)`, { a, b, byUser: from });
         result = "pending";
       } else if (row.STATUS === "pending" && row.REQUESTED_BY === to) {
         await conn.execute(`UPDATE friendships SET status = 'accepted' WHERE user_a = :a AND user_b = :b`, { a, b });

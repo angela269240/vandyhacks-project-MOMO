@@ -1,22 +1,19 @@
 "use client";
 
-import { ArrowLeft, Loader2, MonitorSmartphone, RotateCw } from "lucide-react";
+import { Loader2, MonitorSmartphone, RotateCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { OrbitLogo } from "@/components/brand/OrbitLogo";
 import { Avatar } from "@/components/profile/Avatar";
-import { ProfileForm } from "@/components/profile/ProfileForm";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/useMe";
 import { ApiError, api, type Identity } from "@/lib/client/api";
-import { createProfile } from "@/lib/client/profile";
 import { INTERESTS } from "@/lib/interests";
 import type { FriendState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type Mode = "login" | "register" | "profile";
+type Mode = "login" | "register";
 type Failure = { kind: "auth" | "network"; message: string };
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -35,10 +32,22 @@ const linkButton =
  * The floating window over the decorative graph. Orbit uses demo device identity (see lib/auth.ts),
  * so instead of email/password fields it restores the profile saved in this browser or creates a new one.
  */
-export function AuthWindow({ leaving, onEntered }: { leaving: boolean; onEntered: () => void }) {
+export function AuthWindow({
+  leaving,
+  initialName = "",
+  onEntered,
+  onRegistered,
+}: {
+  leaving: boolean;
+  /** coming back from the welcome page: reopen on the register step with the name kept */
+  initialName?: string;
+  onEntered: () => void;
+  /** "Create account" hands off to the welcome page */
+  onRegistered: (name: string) => void;
+}) {
   const { identity, me, signIn } = useMe();
-  const [mode, setMode] = useState<Mode>("login");
-  const [name, setName] = useState("");
+  const [mode, setMode] = useState<Mode>(initialName ? "register" : "login");
+  const [name, setName] = useState(initialName);
 
   const enter = (next: Identity) => {
     signIn(next);
@@ -81,12 +90,9 @@ export function AuthWindow({ leaving, onEntered }: { leaving: boolean; onEntered
               name={name}
               setName={setName}
               replacing={identity ? (me?.name ?? "your saved profile") : null}
-              onNext={() => setMode("profile")}
+              onNext={() => onRegistered(name.trim())}
               onLogin={() => setMode("login")}
             />
-          )}
-          {mode === "profile" && (
-            <ProfilePanel name={name} onBack={() => setMode("register")} onCreated={enter} />
           )}
         </motion.div>
       </AnimatePresence>
@@ -244,8 +250,8 @@ function RegisterPanel({
       <Brand heading="Create your Orbit account" subtitle="Find your people. Explore your campus." />
 
       <DemoNote>
-        Demo mode: your account lives in this browser, so there&apos;s no email or password. Next you&apos;ll set up your
-        profile.
+        Demo mode: your account lives in this browser, so there&apos;s no email or password. Next you&apos;ll tell us a
+        little about yourself.
       </DemoNote>
 
       <div className="space-y-1.5">
@@ -288,49 +294,5 @@ function RegisterPanel({
         </button>
       </p>
     </form>
-  );
-}
-
-function ProfilePanel({
-  name,
-  onBack,
-  onCreated,
-}: {
-  name: string;
-  onBack: () => void;
-  onCreated: (identity: Identity) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between">
-        <button type="button" onClick={onBack} className={cn(linkButton, "inline-flex items-center gap-1 text-sm")}>
-          <ArrowLeft className="size-4" aria-hidden /> Back
-        </button>
-        <OrbitLogo size={28} />
-      </div>
-      <header>
-        <h1 id="auth-heading" className="font-heading text-2xl font-semibold tracking-tight text-white">
-          Set up your profile
-        </h1>
-        <p className="mt-1.5 text-sm text-[#A9B4D9]">Pick what you&apos;re into so Orbit can place you near your people.</p>
-      </header>
-      <ProfileForm
-        initial={{ name: name.trim() }}
-        submitLabel="Enter Orbit"
-        submitClassName={primaryButton}
-        onSubmit={async ({ avatarFile, ...values }) => {
-          try {
-            const { user, identity, avatarFailed } = await createProfile(values, avatarFile);
-            if (avatarFailed) toast.error("Couldn't upload your photo");
-            onCreated(identity);
-            toast.success(`Welcome to Orbit, ${user.name.split(" ")[0]}!`, {
-              description: "Click a glowing group to step inside.",
-            });
-          } catch (err) {
-            throw new Error(isNetworkError(err) ? NETWORK_MESSAGE : (err as Error).message);
-          }
-        }}
-      />
-    </div>
   );
 }
