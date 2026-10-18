@@ -21,6 +21,7 @@ const WELCOME_FADE_MS = 700;
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { ready, signedIn, signIn } = useMe();
   const [entering, setEntering] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   /** set once "Create account" is pressed: the login window gives way to the welcome page */
   const [welcomeName, setWelcomeName] = useState<string | null>(null);
   const [backName, setBackName] = useState("");
@@ -66,13 +67,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   className="absolute inset-0"
                   exit={{ opacity: 0, transition: { duration: WELCOME_FADE_MS / 1000, ease: "easeInOut" } }}
                 >
-                  <PreviewGraph dim={!signedIn} />
-                  <div className="absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
+                  <PreviewGraph mode={authMode} dim={!signedIn} />
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-end overflow-y-auto px-5 py-7 sm:px-[5vw] max-[760px]:top-[34dvh] max-[760px]:items-start max-[760px]:justify-center max-[760px]:bg-[#f6efe2] max-[760px]:px-5 max-[760px]:py-5">
                     <AuthWindow
                       leaving={signedIn}
                       initialName={backName}
                       onEntered={() => setEntering(true)}
                       onRegistered={setWelcomeName}
+                      onModeChange={setAuthMode}
                     />
                   </div>
                 </motion.div>

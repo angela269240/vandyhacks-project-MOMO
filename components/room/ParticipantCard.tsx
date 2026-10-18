@@ -29,14 +29,14 @@ export const ParticipantCard = forwardRef<
             aria-label={[label, m.speaking && "speaking", m.mic === "off" && "muted", m.sharing && "sharing"].filter(Boolean).join(", ")}
             className={cn(
               "glass relative flex h-[104px] w-[120px] shrink-0 snap-start flex-col items-center justify-center gap-1.5 rounded-2xl px-2 transition-[box-shadow,border-color,background-color] duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-              m.speaking ? "bg-white/[0.07]" : "hover:bg-white/[0.05]",
+              m.speaking ? "bg-primary/10" : "hover:bg-foreground/5",
             )}
-            style={m.speaking ? { borderColor: m.color, boxShadow: `0 0 18px -4px ${m.color}` } : undefined}
+            style={m.speaking ? { borderColor: m.color } : undefined}
           />
         }
       >
         <span className="relative">
-          <Avatar name={m.user.name} url={m.user.avatarUrl} color={m.color} size={44} className={cn(m.isMe && "ring-2 ring-white")} />
+          <Avatar name={m.user.name} url={m.user.avatarUrl} color={m.color} size={44} className={cn(m.isMe && "ring-2 ring-background")} />
           {m.speaking && (
             <span
               aria-hidden
@@ -45,16 +45,16 @@ export const ParticipantCard = forwardRef<
             />
           )}
         </span>
-        <span className={cn("max-w-full truncate text-xs", m.speaking ? "font-semibold text-white" : "text-foreground/85")}>
+        <span className={cn("max-w-full truncate text-xs", m.speaking ? "font-semibold text-foreground" : "text-foreground/85")}>
           {label}
         </span>
         <span className="absolute top-1.5 right-1.5 flex gap-1">
-          {m.sharing && <MonitorUp className="size-3.5 text-[#22D3EE]" aria-hidden />}
+          {m.sharing && <MonitorUp className="size-3.5 text-primary" aria-hidden />}
           {m.speaking && <Volume2 className="size-3.5" style={{ color: m.color }} aria-hidden />}
-          {m.mic === "off" && <MicOff className="size-3.5 text-[#FB7185]" aria-hidden />}
+          {m.mic === "off" && <MicOff className="size-3.5 text-destructive" aria-hidden />}
         </span>
         {m.isFriend && (
-          <span className="absolute top-1.5 left-1.5 rounded-full bg-[#A78BFA]/15 px-1.5 text-[9px] font-semibold tracking-wide text-[#C4B5FD] uppercase">
+          <span className="absolute top-1.5 left-1.5 rounded-full bg-primary/15 px-1.5 text-[9px] font-semibold tracking-wide text-primary uppercase">
             Friend
           </span>
         )}

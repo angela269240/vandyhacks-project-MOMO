@@ -28,10 +28,10 @@ export function ScreenShareStage({
   return (
     <section
       aria-label={title}
-      className="glass relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl"
-      style={{ borderColor: `${color}55`, boxShadow: `0 0 40px -18px ${color}` }}
+      className="glass elevated relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl"
+      style={{ borderColor: color }}
     >
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-white/10 px-3 text-sm">
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 text-sm">
         <MonitorUp className="size-4" style={{ color }} aria-hidden />
         <span className="truncate font-medium">{title}</span>
         <Tooltip>
@@ -40,7 +40,7 @@ export function ScreenShareStage({
               <button
                 onClick={() => frameRef.current?.requestFullscreen?.()}
                 aria-label="View shared screen fullscreen"
-                className="ml-auto rounded-md p-1.5 text-muted-foreground transition hover:bg-white/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
+                className="ml-auto rounded-md p-1.5 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
               />
             }
           >
@@ -49,7 +49,7 @@ export function ScreenShareStage({
           <TooltipContent>Fullscreen</TooltipContent>
         </Tooltip>
       </header>
-      <div ref={frameRef} className="relative min-h-0 flex-1 bg-[#02040a]">
+      <div ref={frameRef} className="relative min-h-0 flex-1 bg-[var(--bg-0)]">
         {share.stream ? (
           <StreamVideo stream={share.stream} onLoaded={() => setLoaded(true)} />
         ) : share.participant && share.publication && subscribed ? (

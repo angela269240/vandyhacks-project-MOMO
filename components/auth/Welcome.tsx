@@ -235,7 +235,7 @@ export function Welcome({
                       if (avatarFailed) toast.error("Couldn't upload your photo");
                       onCreated(identity);
                       toast.success(`Welcome to Orbit, ${user.name.split(" ")[0]}!`, {
-                        description: "Click a glowing group to step inside.",
+                        description: "Click a colored group to step inside.",
                       });
                     } catch (err) {
                       throw new Error(isNetworkError(err) ? NETWORK_MESSAGE : (err as Error).message);

@@ -2,14 +2,13 @@
 
 import { Loader2, MonitorSmartphone, RotateCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
-import { OrbitLogo } from "@/components/brand/OrbitLogo";
+import { useEffect, useState } from "react";
 import { Avatar } from "@/components/profile/Avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/useMe";
 import { ApiError, api, type Identity } from "@/lib/client/api";
-import { INTERESTS } from "@/lib/interests";
+import { hueVar, identityColor } from "@/lib/colors";
 import type { FriendState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,10 +22,10 @@ const NETWORK_MESSAGE = "Couldn't reach Orbit. Check your connection and try aga
 const isNetworkError = (e: unknown) => !(e instanceof ApiError) || e.status >= 500;
 
 export const primaryButton =
-  "inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] px-4 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(99,102,241,0.7)] transition-[filter,box-shadow,opacity] duration-200 outline-none hover:brightness-110 hover:shadow-[0_10px_30px_-8px_rgba(124,58,237,0.8)] focus-visible:ring-3 focus-visible:ring-[#60A5FA]/60 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:brightness-100";
+  "inline-flex h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-[#a8553a] px-4 text-[15px] font-semibold text-white transition-colors outline-none hover:bg-[#8f4630] focus-visible:ring-2 focus-visible:ring-[#a8553a] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f6efe2] disabled:cursor-not-allowed disabled:opacity-60";
 
 const linkButton =
-  "rounded font-medium text-[#93C5FD] underline-offset-4 transition-colors outline-none hover:text-white hover:underline focus-visible:ring-2 focus-visible:ring-[#60A5FA]/60";
+  "rounded font-medium text-[#a8553a] underline underline-offset-2 transition-colors outline-none hover:text-[#8f4630] focus-visible:ring-2 focus-visible:ring-[#a8553a]/60";
 
 /**
  * The floating window over the decorative graph. Orbit uses demo device identity (see lib/auth.ts),
@@ -37,6 +36,7 @@ export function AuthWindow({
   initialName = "",
   onEntered,
   onRegistered,
+  onModeChange,
 }: {
   leaving: boolean;
   /** coming back from the welcome page: reopen on the register step with the name kept */
@@ -44,10 +44,13 @@ export function AuthWindow({
   onEntered: () => void;
   /** "Create account" hands off to the welcome page */
   onRegistered: (name: string) => void;
+  onModeChange: (mode: Mode) => void;
 }) {
   const { identity, me, signIn } = useMe();
   const [mode, setMode] = useState<Mode>(initialName ? "register" : "login");
   const [name, setName] = useState(initialName);
+
+  useEffect(() => onModeChange(mode), [mode, onModeChange]);
 
   const enter = (next: Identity) => {
     signIn(next);
@@ -62,9 +65,9 @@ export function AuthWindow({
       transition={{ duration: leaving ? 0.3 : 0.4, ease: EASE }}
       inert={leaving}
       className={cn(
-        "relative w-full max-w-[440px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[20px] border border-[rgba(129,140,248,0.22)] p-6 sm:w-[420px] sm:p-8",
-        "max-h-[calc(100dvh-32px)] bg-[rgba(14,22,44,0.94)] backdrop-blur-md",
-        "shadow-[0_30px_80px_-20px_rgba(0,0,0,0.75),0_0_0_1px_rgba(255,255,255,0.03)_inset,0_0_60px_-30px_rgba(124,58,237,0.6)]",
+        "pointer-events-auto relative w-full max-w-[400px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[18px] border border-[#cdbba4] bg-[#f6efe2] p-6 text-[#3a2a20] sm:p-7",
+        "max-h-[calc(100dvh-56px)] shadow-[0_18px_55px_-32px_rgba(58,42,32,0.38)]",
+        "max-[760px]:max-h-[calc(66dvh-20px)] max-[760px]:rounded-none max-[760px]:border-0 max-[760px]:p-0 max-[760px]:shadow-none",
       )}
     >
       <AnimatePresence mode="wait" initial={false}>
@@ -80,7 +83,7 @@ export function AuthWindow({
               identity={identity}
               savedName={me?.name ?? null}
               savedAvatar={me?.avatarUrl ?? null}
-              savedColor={INTERESTS.find((i) => i.id === me?.interestIds[0])?.color ?? "#60A5FA"}
+              savedColor={me ? identityColor(me) : hueVar("stone")}
               onEnter={enter}
               onRegister={() => setMode("register")}
             />
@@ -102,21 +105,20 @@ export function AuthWindow({
 
 function Brand({ heading, subtitle }: { heading: string; subtitle: string }) {
   return (
-    <header className="flex flex-col items-center text-center">
-      <OrbitLogo size={52} className="drop-shadow-[0_0_18px_rgba(34,211,238,0.45)]" />
-      <p className="mt-2 font-heading text-lg font-semibold tracking-[0.18em] text-white/90 uppercase">Orbit</p>
-      <h1 id="auth-heading" className="mt-5 font-heading text-2xl font-semibold tracking-tight text-white">
+    <header>
+      <p className="mb-[18px] text-[22px] font-semibold tracking-[0.02em]">Orbit</p>
+      <h1 id="auth-heading" className="text-[22px] leading-tight font-semibold tracking-[-0.01em]">
         {heading}
       </h1>
-      <p className="mt-1.5 text-sm text-[#A9B4D9]">{subtitle}</p>
+      <p className="mt-1 text-sm text-[#7a6552]">{subtitle}</p>
     </header>
   );
 }
 
 function DemoNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex items-start gap-2 rounded-xl border border-[rgba(129,140,248,0.18)] bg-white/[0.03] px-3 py-2.5 text-xs leading-relaxed text-[#A9B4D9]">
-      <MonitorSmartphone className="mt-px size-4 shrink-0 text-[#93C5FD]" aria-hidden />
+    <p className="flex items-start gap-2 rounded-[10px] border border-[#cdbba4] bg-[#fffaf0] px-3 py-2.5 text-xs leading-relaxed text-[#7a6552]">
+      <MonitorSmartphone className="mt-px size-4 shrink-0 text-[#a8553a]" aria-hidden />
       <span>{children}</span>
     </p>
   );
@@ -160,20 +162,20 @@ function LoginPanel({
   };
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-      <Brand heading="Welcome to Orbit" subtitle="Find your people. Explore your campus." />
+    <form onSubmit={submit} noValidate className="flex flex-col gap-[18px]">
+      <Brand heading="Welcome back to Orbit" subtitle="Pick up where you left off." />
 
       {identity ? (
-        <div className="flex items-center gap-3 rounded-xl border border-[rgba(129,140,248,0.2)] bg-[#0A1230]/70 px-3.5 py-3">
+        <div className="flex items-center gap-3 rounded-[10px] border border-[#cdbba4] bg-[#fffaf0] px-3.5 py-3">
           <Avatar name={savedName ?? "?"} url={savedAvatar} color={savedColor} size={40} />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-white">{savedName ?? "Your saved profile"}</p>
-            <p className="text-xs text-[#A9B4D9]">Saved on this device</p>
+            <p className="truncate text-sm font-medium text-[#3a2a20]">{savedName ?? "Your saved profile"}</p>
+            <p className="text-xs text-[#7a6552]">Saved on this device</p>
           </div>
         </div>
       ) : (
         <DemoNote>
-          No Orbit profile on this device yet. This demo doesn&apos;t use passwords: your profile is tied to this browser.
+          No Orbit profile is saved here yet. This demo keeps your profile on this browser, so there&apos;s no password to remember.
         </DemoNote>
       )}
 
@@ -181,11 +183,11 @@ function LoginPanel({
         {failure && (
           <div
             role="alert"
-            className="flex flex-col gap-2 rounded-xl border border-[#fb7185]/35 bg-[#fb7185]/10 px-3.5 py-2.5 text-sm text-[#FECDD3]"
+            className="flex flex-col gap-2 rounded-[10px] border border-[#f09595] bg-[#fcebeb] px-3.5 py-2.5 text-sm text-[#a32d2d]"
           >
             <p>{failure.message}</p>
             {failure.kind === "auth" && (
-              <button type="button" onClick={onRegister} className={cn(linkButton, "self-start text-[#FECDD3]")}>
+              <button type="button" onClick={onRegister} className={cn(linkButton, "self-start text-[#a32d2d]")}>
                 Create a new profile
               </button>
             )}
@@ -204,19 +206,19 @@ function LoginPanel({
               <RotateCw className="size-4" aria-hidden /> Retry
             </>
           ) : (
-            "Continue on this device"
+            "Log in"
           )}
         </button>
       ) : (
         <button type="button" onClick={onRegister} className={primaryButton}>
-          Get started
+          Create your profile
         </button>
       )}
 
-      <p className="text-center text-sm text-[#A9B4D9]">
+      <p className="text-center text-[13px] text-[#7a6552]">
         New to Orbit?{" "}
         <button type="button" onClick={onRegister} className={linkButton}>
-          Create an account
+          Sign up
         </button>
       </p>
     </form>
@@ -246,17 +248,16 @@ function RegisterPanel({
   };
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-      <Brand heading="Create your Orbit account" subtitle="Find your people. Explore your campus." />
+    <form onSubmit={submit} noValidate className="flex flex-col gap-[18px]">
+      <Brand heading="Become a node" subtitle="Create your account to join the network." />
 
       <DemoNote>
-        Demo mode: your account lives in this browser, so there&apos;s no email or password. Next you&apos;ll tell us a
-        little about yourself.
+        Your demo profile lives in this browser. Next, you&apos;ll add a few details so Orbit can place you near your people.
       </DemoNote>
 
       <div className="space-y-1.5">
-        <Label htmlFor="auth-name" className="text-[#C7D0F0]">
-          Your name
+        <Label htmlFor="auth-name" className="text-[13px] font-normal text-[#7a6552]">
+          Full name
         </Label>
         <Input
           id="auth-name"
@@ -267,18 +268,18 @@ function RegisterPanel({
           autoFocus
           aria-invalid={!!error}
           aria-describedby={error ? "auth-name-error" : undefined}
-          className="h-11 rounded-xl border-[rgba(129,140,248,0.25)] bg-[#070C1F] px-3.5 text-[15px] focus-visible:border-[#60A5FA] focus-visible:ring-[#60A5FA]/30 dark:bg-[#070C1F]"
-          placeholder="Alex Rivera"
+          className="h-10 rounded-[10px] border-[#cdbba4] bg-[#fffaf0] px-3 text-sm text-[#3a2a20] placeholder:text-[#a89886] focus-visible:border-[#a8553a] focus-visible:ring-2 focus-visible:ring-[#a8553a]/25 dark:bg-[#fffaf0]"
+          placeholder="Maya Chen"
         />
         {error && (
-          <p id="auth-name-error" role="alert" className="text-xs text-destructive">
+          <p id="auth-name-error" role="alert" className="text-xs text-[#a32d2d]">
             {error}
           </p>
         )}
       </div>
 
       {replacing && (
-        <p className="text-xs text-[#FCD34D]/90">
+        <p className="text-xs text-[#8f5f22]">
           Creating an account replaces {replacing} on this device. You won&apos;t be able to switch back.
         </p>
       )}
@@ -287,8 +288,8 @@ function RegisterPanel({
         Create account
       </button>
 
-      <p className="text-center text-sm text-[#A9B4D9]">
-        Already have an account?{" "}
+      <p className="text-center text-[13px] text-[#7a6552]">
+        Have an account?{" "}
         <button type="button" onClick={onLogin} className={linkButton}>
           Log in
         </button>

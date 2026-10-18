@@ -4,7 +4,7 @@ import { Loader2, SendHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/profile/Avatar";
-import { INTERESTS } from "@/lib/interests";
+import { hueVar, identityColor } from "@/lib/colors";
 import type { ChatHour, GraphUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { messageKey } from "./RoomConnection";
@@ -75,14 +75,14 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-scroll-region>
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-4">
-        <span className="size-2 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} aria-hidden />
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+        <span className="size-2 rounded-full" style={{ background: color }} aria-hidden />
         <h2 className="font-heading text-sm font-semibold">Chat</h2>
         <span className="truncate text-xs text-muted-foreground">{groupName}</span>
         <button
           onClick={onClose}
           aria-label="Close chat"
-          className="ml-auto rounded-md p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
+          className="ml-auto rounded-md p-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
         >
           <X className="size-4" />
         </button>
@@ -103,21 +103,21 @@ export function ChatPanel({
         {hours.map((h) => (
           <section key={h.hourStart} className="mb-3">
             <div className="my-3 flex items-center gap-3 text-[10px] tracking-wider text-muted-foreground uppercase">
-              <span className="h-px flex-1 bg-white/10" />
+              <span className="h-px flex-1 bg-border" />
               {hourLabel(h.hourStart)}
-              <span className="h-px flex-1 bg-white/10" />
+              <span className="h-px flex-1 bg-border" />
             </div>
             <ul className="flex flex-col gap-3">
               {h.messages.map((m) => {
                 const who = people.get(m.userId);
-                const c = INTERESTS.find((i) => i.id === who?.interestIds[0])?.color ?? "#60A5FA";
+                const c = who ? identityColor(who) : hueVar("stone");
                 const mine = m.userId === meId;
                 return (
                   <li key={messageKey(m)} className="flex gap-2.5">
                     <Avatar name={who?.name ?? "?"} url={who?.avatarUrl} color={c} size={28} className="mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className={cn("truncate text-sm font-medium", mine && "text-[#67E8F9]")}>
+                        <span className={cn("truncate text-sm font-medium", mine && "text-primary")}>
                           {mine ? "You" : (who?.name ?? "Someone")}
                         </span>
                         <time dateTime={m.ts} className="shrink-0 text-[11px] text-muted-foreground">
@@ -139,7 +139,7 @@ export function ChatPanel({
           e.preventDefault();
           send();
         }}
-        className="flex shrink-0 items-end gap-2 border-t border-white/10 p-3"
+        className="flex shrink-0 items-end gap-2 border-t border-border p-3"
       >
         <textarea
           ref={inputRef}

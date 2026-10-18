@@ -14,9 +14,9 @@ import { useMe } from "@/hooks/useMe";
 import { useRoomFriendships } from "@/hooks/useRoomFriendships";
 import { useRoomPresence } from "@/hooks/useRoomPresence";
 import { roomUIState } from "@/hooks/useRoomUIState";
-import { rgba } from "@/lib/colors";
+import { identityColor, hueVar } from "@/lib/colors";
+import { useGroupColor } from "@/lib/client/groupHues";
 import { sceneEvents } from "@/lib/client/scene";
-import { INTERESTS } from "@/lib/interests";
 import type { Group, GraphUser } from "@/lib/types";
 import { ChatPanel } from "./ChatPanel";
 import { ParticipantCarousel } from "./ParticipantCarousel";
@@ -34,7 +34,6 @@ const EASE_IN = [0.55, 0, 0.75, 0.3] as const;
 const CARD_W = 300;
 
 const sameRoom = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-const interestColor = (u: GraphUser) => INTERESTS.find((i) => i.id === u.interestIds[0])?.color ?? "#60A5FA";
 
 /** After a scroll-out commits, swallow trackpad momentum so it doesn't also zoom the map. */
 function swallowWheel(ms: number) {
@@ -58,6 +57,7 @@ export function RoomView() {
   const { enter, leave, session, voice } = conn;
   const { identity, friends } = useMe();
   const { data: graph } = useGraph();
+  const groupColor = useGroupColor();
   const meId = identity?.userId ?? null;
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const isWide = useMediaQuery("(min-width: 1180px)");
@@ -98,7 +98,7 @@ export function RoomView() {
     () =>
       present.map((u) => ({
         user: u,
-        color: interestColor(u),
+        color: identityColor(u),
         isMe: u.id === meId,
         isFriend: u.id !== meId && myFriends.has(u.id),
         mic:
@@ -129,7 +129,8 @@ export function RoomView() {
     shareCount: voice.shares.length,
     memberCount: members.length,
   });
-  const color = group?.color ?? graph?.groups.find((g) => sameRoom(g.name, name))?.color ?? "#22D3EE";
+  const roomGroup = group ?? graph?.groups.find((g) => sameRoom(g.name, name)) ?? null;
+  const color = roomGroup ? groupColor(roomGroup) : hueVar("stone");
 
   // ---- reveal: the room expands out of the bubble the map just zoomed into ----
   const open = useMotionValue(0);
@@ -310,7 +311,7 @@ export function RoomView() {
         aria-hidden
         className="absolute inset-0"
         style={{
-          background: `radial-gradient(ellipse at 50% 45%, ${rgba(color, 0.07)}, transparent 55%), radial-gradient(ellipse at 50% 40%, rgba(10,18,48,0.92), rgba(3,5,12,0.96) 70%)`,
+          background: `radial-gradient(ellipse at 50% 45%, color-mix(in srgb, ${color} 7%, transparent), transparent 55%), radial-gradient(ellipse at 50% 40%, var(--bg-1), var(--bg-0) 72%)`,
         }}
       />
       <RoomContext.Provider value={conn.room ?? undefined}>
@@ -429,7 +430,7 @@ export function RoomView() {
                   animate={{ width: chatWidth, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ duration: 0.3, ease: EASE_OUT }}
-                  className="shrink-0 overflow-hidden border-l border-white/10 bg-[rgba(8,13,32,0.72)]"
+                  className="shrink-0 overflow-hidden border-l border-border bg-card/85"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="h-full" style={{ width: chatWidth }}>
@@ -475,14 +476,14 @@ function StageNotice({
   const content =
     ui.phase === "failed" ? (
       <div role="alert" className="glass pointer-events-auto flex items-center gap-3 rounded-2xl px-4 py-3 text-sm">
-        <WifiOff className="size-4 shrink-0 text-[#FBBF24]" aria-hidden />
+        <WifiOff className="size-4 shrink-0 text-[var(--hue-ochre)]" aria-hidden />
         <span>{error ?? "Lost connection to the room."} Your chat draft is kept.</span>
         <button
           onClick={(e) => {
             e.stopPropagation();
             onRetry();
           }}
-          className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium transition hover:bg-white/15"
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-foreground/10 px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/15"
         >
           <RotateCw className="size-3.5" aria-hidden /> Reconnect
         </button>
@@ -493,9 +494,9 @@ function StageNotice({
       </div>
     ) : ui.alone && !ui.presenting && ui.phase === "live" ? (
       <div className="glass flex items-center gap-2.5 rounded-2xl px-4 py-2.5 text-sm text-foreground/85">
-        <UserPlus className="size-4 shrink-0 text-[#A78BFA]" aria-hidden />
+        <UserPlus className="size-4 shrink-0 text-primary" aria-hidden />
         <span>
-          You&apos;re the first one here. Your bubble is glowing on the map, so friends can find you.
+          You&apos;re the first one here. Your bubble is visible on the map, so friends can find you.
         </span>
       </div>
     ) : null;

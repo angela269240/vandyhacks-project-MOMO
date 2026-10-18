@@ -26,9 +26,10 @@ export type Layout = {
 
 /**
  * On-screen radius of a bubble with n people (world units): people loosely packed at the map's collide
- * spacing (~120 apart, so ~70·√n across) plus the outline padding. The map draws bubbles at least this big.
+ * spacing (~120 apart, so ~70·√n across) plus a close-fitting outline. The map draws bubbles at least this big.
  */
-export const clusterRadius = (n: number, scale = 1) => (90 + 70 * Math.sqrt(Math.max(n, 1))) * scale;
+export const BUBBLE_PADDING = 32;
+export const clusterRadius = (n: number, scale = 1) => (62 + 70 * Math.sqrt(Math.max(n, 1))) * scale;
 
 /**
  * Places bubbles along a golden-angle spiral, pushing each one outward until it clears every bubble

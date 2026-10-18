@@ -1,6 +1,6 @@
 import { MicOff, MonitorUp } from "lucide-react";
 import { memo } from "react";
-import { initials, rgba } from "@/lib/colors";
+import { initials } from "@/lib/colors";
 import type { GraphUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -84,13 +84,6 @@ export const RoomMember = memo(function RoomMember({ m, r, compact, leaving, foc
           sync();
         }}
       >
-        {/* cheap glow: a radial gradient disc instead of a blur filter on a moving element */}
-        <circle r={r * 2} fill={`url(#glow-${m.user.id})`} opacity={focus === "hovered" ? 1 : 0.7} />
-        <radialGradient id={`glow-${m.user.id}`}>
-          <stop offset="35%" stopColor={rgba(m.color, 0.45)} />
-          <stop offset="100%" stopColor={rgba(m.color, 0)} />
-        </radialGradient>
-
         {[0, 1, 2].map((i) => (
           <circle
             key={i}
@@ -119,7 +112,7 @@ export const RoomMember = memo(function RoomMember({ m, r, compact, leaving, foc
         />
 
         <g className="room-node-scale" style={{ transform: `scale(${focus === "hovered" ? 1.15 : 1})` }}>
-          <circle r={r} fill={m.color} />
+          <circle r={r} fill={m.color} stroke="var(--map-node-edge)" strokeWidth={2} />
           {m.user.avatarUrl ? (
             <>
               <clipPath id={`clip-${m.user.id}`}>
@@ -136,25 +129,23 @@ export const RoomMember = memo(function RoomMember({ m, r, compact, leaving, foc
               />
             </>
           ) : (
-            <text textAnchor="middle" dominantBaseline="central" fontSize={r * 0.62} fontWeight={700} fill="rgba(3,5,12,0.85)">
+            <text textAnchor="middle" dominantBaseline="central" fontSize={r * 0.62} fontWeight={700} fill="var(--map-node-ink)">
               {initials(m.user.name)}
             </text>
           )}
-          <circle r={r} fill="url(#member-shine)" />
-          <circle r={r} fill="none" stroke="rgba(255,255,255,0.3)" />
-          {m.isMe && <circle r={r + 4} fill="none" stroke="#fff" strokeWidth={1.6} />}
+          {m.isMe && <circle r={r + 4} fill="none" stroke="var(--map-ink)" strokeWidth={1.6} />}
         </g>
 
         {m.mic === "off" && (
           <g transform={`translate(${r * 0.72} ${r * 0.72})`}>
-            <circle r={badge / 2 + 2} fill="#0A1230" stroke="rgba(251,113,133,0.6)" />
-            <MicOff x={-badge / 2 + 3} y={-badge / 2 + 3} width={badge - 6} height={badge - 6} color="#FB7185" strokeWidth={2.5} />
+            <circle r={badge / 2 + 2} fill="var(--background)" stroke="var(--destructive)" />
+            <MicOff x={-badge / 2 + 3} y={-badge / 2 + 3} width={badge - 6} height={badge - 6} color="var(--destructive)" strokeWidth={2.5} />
           </g>
         )}
         {m.sharing && (
           <g transform={`translate(${-r * 0.72} ${r * 0.72})`}>
-            <circle r={badge / 2 + 2} fill="#0A1230" stroke="rgba(34,211,238,0.6)" />
-            <MonitorUp x={-badge / 2 + 3} y={-badge / 2 + 3} width={badge - 6} height={badge - 6} color="#22D3EE" strokeWidth={2.5} />
+            <circle r={badge / 2 + 2} fill="var(--background)" stroke="var(--primary)" />
+            <MonitorUp x={-badge / 2 + 3} y={-badge / 2 + 3} width={badge - 6} height={badge - 6} color="var(--primary)" strokeWidth={2.5} />
           </g>
         )}
       </g>
@@ -165,8 +156,8 @@ export const RoomMember = memo(function RoomMember({ m, r, compact, leaving, foc
           textAnchor="middle"
           fontSize={nameSize}
           fontWeight={m.speaking || m.isMe ? 600 : 500}
-          fill={m.speaking ? "#ffffff" : "rgba(230,236,255,0.86)"}
-          style={{ paintOrder: "stroke", stroke: "rgba(3,5,12,0.75)", strokeWidth: 3 }}
+          fill="var(--map-ink)"
+          style={{ paintOrder: "stroke", stroke: "var(--background)", strokeWidth: 3 }}
         >
           {label}
         </text>
@@ -178,8 +169,8 @@ export const RoomMember = memo(function RoomMember({ m, r, compact, leaving, foc
           fontSize={nameSize - 2}
           fontWeight={600}
           letterSpacing={0.4}
-          fill={m.speaking ? m.color : "rgba(167,139,250,0.9)"}
-          style={{ paintOrder: "stroke", stroke: "rgba(3,5,12,0.75)", strokeWidth: 3 }}
+          fill={m.speaking ? m.color : "var(--primary)"}
+          style={{ paintOrder: "stroke", stroke: "var(--background)", strokeWidth: 3 }}
         >
           {m.speaking ? "speaking" : "friend"}
         </text>
