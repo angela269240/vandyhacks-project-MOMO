@@ -67,6 +67,8 @@ export type MapApi = {
   scrub: (progress: number) => void;
   /** move the camera so this bubble fills `target` on screen (the room stage), so the room is a true zoom */
   frameGroup: (groupId: number, target: ScreenCircle, ms?: number) => void;
+  /** glide to a bubble or a person, keeping the zoom (only zooming in when far out); `leftInset` is a panel covering the left edge */
+  centerOn: (target: { groupId: number } | { userId: string }, leftInset?: number, ms?: number) => void;
   /** where the map is drawing this bubble and these people right now, in screen pixels */
   roomSnapshot: (groupId: number, ids: string[]) => RoomSnapshot;
 };
@@ -351,7 +353,7 @@ export default function SocialGraph(props: Props) {
         if (![...nodes.values()].some(filter)) return;
         const box = fg.getGraphBbox(filter);
         const padX = 140;
-        const padY = 190; // room for the filter bar on top and the degrees slider below
+        const padY = 190; // room for the top bar and the degrees slider below
         const w = Math.max(box.x[1] - box.x[0], 1);
         const h = Math.max(box.y[1] - box.y[0], 1);
         const k = Math.min(1.6, Math.max(0.15, Math.min((size.w - padX * 2) / w, (size.h - padY * 2) / h)));
@@ -391,6 +393,16 @@ export default function SocialGraph(props: Props) {
         const k = Math.min(6, Math.max(0.15, target.r / b.r));
         // the world point that has to sit at the middle of the viewport for the bubble to land on `target`
         fg.centerAt(b.x - (target.x - size.w / 2) / k, b.y - (target.y - size.h / 2) / k, ms);
+        fg.zoom(k, ms);
+      },
+      centerOn: (target, leftInset = 0, ms = 700) => {
+        // Aim at where the bubble is headed, not where it is: a search match is being moved to the middle of the layout.
+        const n = "userId" in target ? nodes.get(target.userId) : undefined;
+        const groupId = "groupId" in target ? target.groupId : (n?.user.groupId ?? null);
+        const p = (groupId !== null && layout.current.anchors.get(groupId)) || (n && { x: n.x ?? 0, y: n.y ?? 0 });
+        if (!p) return;
+        const k = Math.max(fg.zoom(), "userId" in target ? 0.45 : 0.3);
+        fg.centerAt(p.x - leftInset / 2 / k, p.y, ms);
         fg.zoom(k, ms);
       },
       roomSnapshot: (groupId, ids) => {
