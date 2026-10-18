@@ -24,7 +24,7 @@ export function FilterBar({
     <div
       role="toolbar"
       aria-label="Filter bubbles"
-      className="glass pointer-events-auto flex h-11 w-full max-w-[min(1100px,calc(100vw-24px))] items-center gap-2 rounded-full pr-1.5 pl-3 shadow-lg shadow-black/20"
+      className="glass pointer-events-auto flex h-11 w-full max-w-[min(1100px,calc(100vw-24px))] items-center gap-2 rounded-full pr-1.5 pl-3 elevated"
     >
       <div className="flex shrink-0 items-center gap-1 text-xs">
         <button onClick={() => setAll("on")} className="rounded-full px-2 py-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground">
