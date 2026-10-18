@@ -1,0 +1,47 @@
+{
+  "id": "20261018-0425-nobell-dev-8ccf",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "295f028",
+  "started": "2026-10-18T09:25:24.545Z",
+  "ended": "2026-10-18T09:45:00Z",
+  "status": "done",
+  "goal": "Seed world: 25 college groups and 75 people lib/store/memory.ts",
+  "summary": "Seed world (lib/seed-data.ts) is now 25 college-themed groups and 75 people, used by both the in-memory store and scripts/seed.ts. The 6 original groups stay at indices 0-5 (seeded chat history points at 0 and 2); 19 new ones follow (Orgo II, Linear Algebra Office Hours, MCAT Prep, Hackathon Team Finder, Calc III, Coding Interview Prep, etc.). assignGroups() puts the first 25 people one per group (never away), the other 50 at random with per-group weights, so sizes run 1-7. Nobody is groupless. 120 friendships (was 45). The local crowd mode (addCrowd: two 20-person rooms + 7 ring wanderers) is removed so memory and Oracle both have exactly 75; memory store key bumped to V8.",
+  "claims": [
+    "lib/seed-data.ts"
+  ],
+  "files_touched": [
+    "lib/seed-data.ts",
+    "lib/store/memory.ts"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Removed the crowd stress world from the in-memory store",
+      "why": "It topped two rooms up to 20 and added ring wanderers, which would make the total ~120 instead of the requested 75."
+    },
+    {
+      "what": "Kept the 6 original groups as the first 6 of the 25",
+      "why": "Seeded chat history references groups by index, and scripts/seed.ts deletes seed groups by SEED_GROUPS name, so keeping them avoids orphaned old seed groups on the shared DB."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "tsx stats: 75 users, 75 unique names, 25 groups, 0 groupless, 120 friendships, min 1 in-room per group (sizes 1-7). In-memory demo /api/graph: 25 groups, 75 seed users, no empty bubbles; map screenshot shows the new bubbles."
+  },
+  "next_steps": [
+    "Human: decide whether to reseed the SHARED DB with `npm run db:seed` (deletes and recreates seed-* users and the seed groups; user-created profiles/groups untouched)."
+  ],
+  "open_questions": [
+    "With all 75 in groups there are no wanderers on the outer ring anymore; add a few back if the ring matters for the demo."
+  ],
+  "blockers": [],
+  "conflict_notes": []
+}

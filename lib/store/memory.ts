@@ -33,7 +33,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 
 function seededState(): State {
   const now = new Date();
-  const world = buildSeedWorld(now, { crowd: true }); // local demo only: two 20-person groups, the rest 4-6
+  const world = buildSeedWorld(now);
   const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), notes: new Map(), dms: new Map(), codes: new Map(), reports: [], reportKeys: new Set(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
@@ -75,8 +75,8 @@ function seededState(): State {
 
 // Survive Next.js dev hot reloads: one world per server process.
 // Bump the key when the stored shape changes so a running dev server reseeds instead of crashing.
-const g = globalThis as unknown as { __socialMapperMemoryV7?: State };
-const state = () => (g.__socialMapperMemoryV7 ??= seededState());
+const g = globalThis as unknown as { __socialMapperMemoryV8?: State };
+const state = () => (g.__socialMapperMemoryV8 ??= seededState());
 
 function publicUser(u: StoredUser): User {
   const { deviceKeyHash, email, ...rest } = u;
