@@ -70,3 +70,28 @@ test("focused bubbles form square bounds even when their labels have different w
 
   assert.ok(Math.abs(x1 - x0 - (y1 - y0)) < 0.01, `layout is ${x1 - x0} × ${y1 - y0}`);
 });
+
+test("focused bubbles take the center while unfocused bubbles remain in the surrounding field", () => {
+  const focused = [4, 5];
+  const unfocused = [1, 2, 3, 6];
+  const ids = [...focused, ...unfocused];
+  const sizes = new Map(ids.map((id) => [id, 6]));
+  const L = computeLayout(focused, unfocused, null, sizes, 0.55, focused);
+
+  assert.deepEqual(L.anchors.get(4), { x: 0, y: 0 }, "the first highlighted bubble owns the center");
+  const outer = unfocused.map((id) => L.anchors.get(id)!);
+  assert.ok(outer.some((p) => p.x < 0), "unfocused bubbles surround the center instead of forming a right-side strip");
+  assert.ok(outer.some((p) => Math.abs(p.y) > 40), "unfocused bubbles spread vertically around the focused field");
+
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = ids[i];
+      const b = ids[j];
+      const pa = L.anchors.get(a)!;
+      const pb = L.anchors.get(b)!;
+      const ra = clusterRadius(sizes.get(a)!, focused.includes(a) ? 1 : 0.55);
+      const rb = clusterRadius(sizes.get(b)!, focused.includes(b) ? 1 : 0.55);
+      assert.ok(Math.hypot(pa.x - pb.x, pa.y - pb.y) >= ra + rb, `${a} and ${b} overlap`);
+    }
+  }
+});
