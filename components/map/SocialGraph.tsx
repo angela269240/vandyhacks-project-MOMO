@@ -212,8 +212,8 @@ export default function SocialGraph(props: Props) {
   const pulses = useRef(new Map<number, number>());
   const images = useRef(new Map<string, HTMLImageElement>());
   /**
-   * A press is a click until it moves past CLICK_SLOP. Then, started on a person, it drags that person (your own
-   * circle anywhere, to drop on a bubble and join; anyone else within their bubble); started anywhere else, it pans.
+   * A press is a click until it moves past CLICK_SLOP. Then it moves the first thing under it: a person (your own
+   * circle anywhere, to drop on a bubble and join; anyone else within their bubble), else a whole bubble, else it pans.
    */
   const press = useRef<{
     startX: number;
@@ -222,7 +222,10 @@ export default function SocialGraph(props: Props) {
     lastY: number;
     moved: boolean;
     node: NodeData | null;
+    groupId: number | null;
   } | null>(null);
+  /** how far each dragged bubble has been moved from its layout spot, so a relayout keeps it where you put it */
+  const groupOffsets = useRef(new Map<number, { x: number; y: number }>());
   /** world-space extent of the visible people, eased so the camera limits don't tremble with the sim */
   const graphBounds = useRef<Bounds | null>(null);
   /** the camera limits stand aside until this time, while a scripted camera move (fit, room zoom) plays */
@@ -613,6 +616,10 @@ export default function SocialGraph(props: Props) {
         if (fit >= k - 0.005) break;
         k = fit;
       }
+      for (const [id, offset] of groupOffsets.current) {
+        const anchor = layout.current.anchors.get(id);
+        if (anchor) layout.current.anchors.set(id, { x: anchor.x + offset.x, y: anchor.y + offset.y });
+      }
     }
     // Bubble colors come from the unfiltered layout, so neighbors differ and filters never recolor anything.
     const full = computeLayout(ids, [], props.myGroupId, sizes, UNFOCUSED_SCALE);
@@ -710,7 +717,8 @@ export default function SocialGraph(props: Props) {
   const bounded = (n: NodeData) => n.id !== propsRef.current.meId && n.user.groupId !== null;
 
   const renderPos = (n: NodeData) => {
-    const dragged = press.current?.moved === true && press.current.node === n;
+    const pn = press.current;
+    const dragged = pn?.moved === true && (pn.node === n || (!pn.node && pn.groupId !== null && pn.groupId === n.user.groupId));
     const b = bob(n.phase, frame.current.t, motionOK.current && !dragged);
     return { x: (n.x ?? 0) + b.dx, y: (n.y ?? 0) + b.dy };
   };
@@ -1107,13 +1115,14 @@ export default function SocialGraph(props: Props) {
       ref={wrapRef}
       // touch-none: a finger on the map pans it instead of scrolling the page
       className="absolute inset-0 touch-none"
-      // Every press is a click until it moves past CLICK_SLOP. Then a press on a person drags just that person;
-      // a press on a bubble or empty space pans the camera (people, bubbles and lines all move together).
+      // Every press is a click until it moves past CLICK_SLOP. Then it drags the first thing under it: a person, else
+      // their whole bubble, else the board (the camera pans: people, bubbles and lines all move together).
       onPointerDownCapture={(e) => {
         if (inRoom || !fgRef.current || e.button !== 0) return;
         const p = localPoint(e);
         const node = nodeAt(p.x, p.y);
-        press.current = { startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false, node };
+        const groupId = node ? null : groupAt(p.x, p.y);
+        press.current = { startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false, node, groupId };
       }}
       onWheelCapture={(e) => {
         if (inRoom) return;
@@ -1168,6 +1177,29 @@ export default function SocialGraph(props: Props) {
             hoverGroup.current = bounded(n) ? null : groupAt(p.x, p.y);
             return;
           }
+          if (pn.groupId !== null) {
+            // the whole bubble follows the pointer 1:1: its spot in the layout, its outline and everyone in it
+            const k = fg.zoom();
+            const dx = (e.clientX - pn.lastX) / k;
+            const dy = (e.clientY - pn.lastY) / k;
+            pn.lastX = e.clientX;
+            pn.lastY = e.clientY;
+            const id = pn.groupId;
+            const anchor = layout.current.anchors.get(id);
+            if (anchor) layout.current.anchors.set(id, { x: anchor.x + dx, y: anchor.y + dy });
+            const offset = groupOffsets.current.get(id) ?? { x: 0, y: 0 };
+            groupOffsets.current.set(id, { x: offset.x + dx, y: offset.y + dy });
+            const drawn = drawnBubble.current.get(id); // no easing lag on the outline
+            if (drawn) Object.assign(drawn, { x: drawn.x + dx, y: drawn.y + dy });
+            for (const n of nodes.values()) {
+              if (n.user.groupId !== id) continue;
+              n.x = (n.x ?? 0) + dx;
+              n.y = (n.y ?? 0) + dy;
+              if (n.fx !== undefined) n.fx += dx;
+              if (n.fy !== undefined) n.fy += dy;
+            }
+            return;
+          }
           // the camera follows the pointer 1:1; at a limit that axis just stops, and moving back moves it at once
           const cur = readCamera(fg);
           writeCamera(fg, applyDragDelta(cur, e.clientX - pn.lastX, e.clientY - pn.lastY, panBounds(cur.k)));
@@ -1180,7 +1212,7 @@ export default function SocialGraph(props: Props) {
         const h = hoverNode.current;
         if (inRoom) wrapRef.current!.style.cursor = h ? "pointer" : "";
         else if (h) wrapRef.current!.style.cursor = h.id === propsRef.current.meId || h.user.groupId !== null ? "grab" : "pointer";
-        else wrapRef.current!.style.cursor = hoverGroup.current !== null ? "pointer" : "grab";
+        else wrapRef.current!.style.cursor = "grab";
       }}
       onPointerUp={(e) => {
         const pn = press.current;
