@@ -70,7 +70,16 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
 
   return (
     // Outer div is positioned by the caller (transform written per frame); inner div owns the pop-in animation.
-    <div ref={ref} style={style} className="fixed top-0 left-0 z-30 w-[300px] max-w-[calc(100vw-24px)]">
+    <div
+      ref={ref}
+      style={style}
+      role="dialog"
+      aria-label={`${user.name}'s profile`}
+      className="pointer-events-auto fixed top-0 left-0 z-30 w-[300px] max-w-[calc(100vw-24px)]"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
     <motion.div
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}

@@ -68,7 +68,102 @@ export type SeedWorld = {
 const idFor = (i: number) => `seed-${String(i + 1).padStart(4, "0")}`;
 const interestId = (name: string) => INTERESTS.find((x) => x.name === name)!.id;
 
-export function buildSeedWorld(now = new Date()): SeedWorld {
+const FIRST = [
+  "Alex", "Bea", "Cam", "Dana", "Eli", "Faye", "Gus", "Hugo", "Iris", "Jade", "Kian", "Lena", "Milo", "Nora",
+  "Omar", "Pia", "Quinn", "Rosa", "Seth", "Tara", "Uma", "Vik", "Wren", "Xavi", "Yara", "Zane",
+];
+const LAST = ["Abbott", "Bishop", "Cruz", "Dutta", "Ellis", "Fong", "Garza", "Haas", "Ito", "Joshi", "Kerr", "Lund"];
+
+/** Groups that get filled to CROWD_SIZE people in the local demo (CS3251 Exam Cram, ML Paper Club). */
+const CROWD_GROUPS = [0, 4];
+const CROWD_SIZE = 40;
+const CROWD_CORE = 30; // people in each crowd who each know CROWD_CORE others there
+const EXTRA_USERS = 100;
+
+/**
+ * Local-demo stress world: 100 more people. Two groups grow to 40 members, and 30 of each group's members
+ * know 30 others in it (the 30 are all friends with each other, plus one friend among the other 10).
+ * The rest of the newcomers spread across the remaining groups and the outer ring.
+ */
+function addCrowd(world: SeedWorld, r: () => number) {
+  const { users, friendships } = world;
+  const seen = new Set(friendships.map((f) => `${f.a}|${f.b}`));
+  const addEdge = (x: string, y: string) => {
+    const [a, b] = x < y ? [x, y] : [y, x];
+    if (a === b || seen.has(`${a}|${b}`)) return;
+    seen.add(`${a}|${b}`);
+    friendships.push({ a, b, status: "accepted", requestedBy: x });
+  };
+
+  const start = users.length;
+  const extras: SeedUser[] = Array.from({ length: EXTRA_USERS }, (_, k) => {
+    const name = `${FIRST[k % FIRST.length]} ${LAST[Math.floor(k / FIRST.length) % LAST.length]}`;
+    const picked = new Set<number>();
+    const target = 3 + Math.floor(r() * 4);
+    while (picked.size < target) picked.add(1 + Math.floor(r() * INTERESTS.length));
+    return {
+      id: idFor(start + k),
+      name,
+      linkedin: `https://www.linkedin.com/in/${name.toLowerCase().replace(/[^a-z]+/g, "-")}`,
+      bio: BIOS[Math.floor(r() * BIOS.length)],
+      interestIds: [...picked],
+      groupIndex: null,
+      memberOf: [],
+      inRoom: false,
+      leftMinutesAgo: null,
+    };
+  });
+
+  // Fill the two crowd groups to exactly CROWD_SIZE active members.
+  let next = 0;
+  for (const gi of CROWD_GROUPS) {
+    const existing = users.filter((u) => u.groupIndex === gi);
+    for (const u of existing) {
+      // everyone in a crowd group is in the room, so the count is exactly 40
+      u.inRoom = true;
+      u.leftMinutesAgo = null;
+    }
+    const needed = CROWD_SIZE - existing.length;
+    for (let i = 0; i < needed; i++) {
+      const u = extras[next++];
+      u.groupIndex = gi;
+      u.memberOf = [gi];
+      u.inRoom = true;
+      u.interestIds = [interestId(SEED_GROUPS[gi].interests[0]), ...u.interestIds.filter((x) => x !== interestId(SEED_GROUPS[gi].interests[0]))].slice(0, 6);
+    }
+  }
+
+  // The rest: about two-thirds join the other groups, the others wander the outer ring.
+  const others = SEED_GROUPS.map((_, i) => i).filter((i) => !CROWD_GROUPS.includes(i));
+  for (; next < extras.length; next++) {
+    const u = extras[next];
+    if (r() < 0.65) {
+      const gi = others[Math.floor(r() * others.length)];
+      u.groupIndex = gi;
+      u.memberOf = [gi];
+      u.inRoom = true;
+    }
+  }
+  users.push(...extras);
+
+  // Friendships inside each crowd: a 30-person core that all know each other (29 each) plus one more friend each.
+  for (const gi of CROWD_GROUPS) {
+    const members = users.filter((u) => u.groupIndex === gi);
+    const core = members.slice(0, CROWD_CORE);
+    const rest = members.slice(CROWD_CORE);
+    for (let i = 0; i < core.length; i++) for (let j = i + 1; j < core.length; j++) addEdge(core[i].id, core[j].id);
+    core.forEach((u, i) => addEdge(u.id, rest[i % rest.length].id));
+  }
+
+  // A few friendships for everyone else so they aren't islands.
+  for (const u of extras) {
+    if (u.groupIndex !== null && CROWD_GROUPS.includes(u.groupIndex)) continue;
+    const pool = users.filter((v) => v.id !== u.id && (u.groupIndex === null || v.groupIndex === u.groupIndex));
+    for (let k = 0; k < 2; k++) addEdge(u.id, pool[Math.floor(r() * pool.length)].id);
+  }
+}
+
+export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {}): SeedWorld {
   const r = rng(42);
   const pick = <T,>(arr: readonly T[]) => arr[Math.floor(r() * arr.length)];
 
@@ -160,5 +255,7 @@ export function buildSeedWorld(now = new Date()): SeedWorld {
     },
   ];
 
-  return { users, groups, friendships, chats };
+  const world = { users, groups, friendships, chats };
+  if (opts.crowd) addCrowd(world, r);
+  return world;
 }
