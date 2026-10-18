@@ -44,7 +44,7 @@ export type Graph = { users: GraphUser[]; groups: GraphGroup[]; edges: Edge[] };
 /** `id` is assigned by the server; messages stored before ids existed fall back to ts + userId. */
 export type ChatMessage = { id?: string; ts: string; userId: string; text: string };
 
-export type ChatHour = { hourStart: string; messages: ChatMessage[]; summary: string | null };
+export type ChatHour = { hourStart: string; messages: ChatMessage[] };
 
 export type FriendState = { friends: string[]; incoming: string[]; outgoing: string[] };
 

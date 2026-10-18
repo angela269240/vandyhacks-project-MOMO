@@ -1,6 +1,6 @@
 import { handle, json } from "@/lib/api";
 import { getStore } from "@/lib/store";
-import { lingerMs, vacancyMs } from "@/lib/time";
+import { lingerMs } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,6 @@ export const dynamic = "force-dynamic";
  * (browsers honor stale-while-revalidate too, which kept rooms seconds behind).
  */
 export const GET = handle(async () => {
-  const graph = await getStore().getGraph(new Date(), lingerMs(), vacancyMs());
+  const graph = await getStore().getGraph(new Date(), lingerMs());
   return json(graph, { headers: { "cache-control": "no-store" } });
 });

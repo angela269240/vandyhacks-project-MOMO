@@ -5,32 +5,15 @@ import { polygonCentroid, polygonContains, polygonHull } from "d3-polygon";
 import { curveCatmullRomClosed, line } from "d3-shape";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-force-graph-2d";
-import { HUES, initials, mixHex, rgba, type ToneKey } from "@/lib/colors";
-import { assignGroupHues, groupHue, groupHues } from "@/lib/client/groupHues";
+import { initials, rgba } from "@/lib/colors";
+import { INTERESTS } from "@/lib/interests";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import type { Graph, GraphGroup, GraphUser } from "@/lib/types";
 import { bob, computeLayout, ringPoint, type Layout } from "./layout";
 
-/** A palette key plus where it's fading in from, so a change of bubble crossfades instead of snapping. */
-type Tone = { key: ToneKey; from: ToneKey; at: number };
-
-/** Theme colors the canvas needs, read from CSS variables whenever the theme flips. */
-type Palette = {
-  hue: Record<ToneKey, string>;
-  ink: string;
-  inkMuted: string;
-  link: string;
-  nodeInk: string;
-  nodeEdge: string;
-  shadow: string;
-};
-
 type NodeData = {
   id: string;
   user: GraphUser;
-  /** display color: the hue of the bubble this person is shown in (stone when in none) */
-  tone: Tone;
-  /** resolved color for the current frame */
   color: string;
   phase: number;
   bornAt: number;
@@ -84,42 +67,11 @@ const UNFOCUSED_SCALE = 0.55;
 const BLOB_PAD = 60;
 const ARRIVED = 230; // members farther than this from their anchor are still travelling
 const DOUBLE_CLICK_MS = 260;
-const TONE_FADE_MS = 700;
-const TONE_KEYS: ToneKey[] = [...HUES.map((h) => h.key), "stone"];
+const INTEREST_COLOR = new Map(INTERESTS.map((i) => [i.id, i.color]));
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeOutBack = (p: number) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
 const smoothPath = line<Pt>().curve(curveCatmullRomClosed.alpha(0.6));
-
-function readPalette(): Palette {
-  const css = getComputedStyle(document.documentElement);
-  // Round-trip through a canvas so any CSS color form (#fff, named, rgb()) comes back as #rrggbb.
-  const probe = document.createElement("canvas").getContext("2d")!;
-  const v = (name: string) => {
-    probe.fillStyle = "#000000";
-    probe.fillStyle = css.getPropertyValue(name).trim() || "#9a9288";
-    return probe.fillStyle;
-  };
-  return {
-    hue: Object.fromEntries(TONE_KEYS.map((k) => [k, v(`--hue-${k}`)])) as Record<ToneKey, string>,
-    ink: v("--map-ink"),
-    inkMuted: v("--map-ink-muted"),
-    link: v("--map-link"),
-    nodeInk: v("--map-node-ink"),
-    nodeEdge: v("--map-node-edge"),
-    shadow: v("--map-shadow"),
-  };
-}
-
-/** Point a tone at a new key, starting a crossfade from whatever is showing now. */
-function retarget(tone: Tone, key: ToneKey, t: number) {
-  if (tone.key === key) return;
-  tone.from = clamp01((t - tone.at) / TONE_FADE_MS) < 0.5 ? tone.from : tone.key;
-  tone.key = key;
-  tone.at = t;
-}
-const resolve = (tone: Tone, pal: Palette, t: number) =>
-  mixHex(pal.hue[tone.from], pal.hue[tone.key], clamp01((t - tone.at) / TONE_FADE_MS));
 
 export default function SocialGraph(props: Props) {
   const fgRef = useRef<ForceGraphMethods<NodeObject<NodeData>> | undefined>(undefined);
@@ -144,17 +96,24 @@ export default function SocialGraph(props: Props) {
   const pulses = useRef(new Map<number, number>());
   const images = useRef(new Map<string, HTMLImageElement>());
   const drag = useRef<{ node: NodeData; startX: number; startY: number; moved: boolean } | null>(null);
+  const groupDrag = useRef<{
+    groupId: number;
+    startX: number;
+    startY: number;
+    lastGraphX: number;
+    lastGraphY: number;
+    moved: boolean;
+  } | null>(null);
+  const groupOffsets = useRef(new Map<number, { x: number; y: number }>());
   const suppressClick = useRef(false);
   const pendingClick = useRef<{ groupId: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   const cardPlacement = useRef<{ id: string; side: "left" | "right" } | null>(null);
   const scrubBase = useRef<number | null>(null);
   const motionOK = useRef(true);
   const fonts = useRef({ sans: "sans-serif", heading: "sans-serif" });
-  const groupTones = useRef(new Map<number, Tone>());
   const frame = useRef({
     t: 0,
     light: false,
-    pal: null as Palette | null,
     highlight: null as Set<string> | null,
     vivid: null as Set<string> | null,
     ringed: null as Set<string> | null,
@@ -166,12 +125,6 @@ export default function SocialGraph(props: Props) {
     return !v || v.has(n.id);
   };
   const isFocused = (n: NodeData) => n.user.groupId === null || propsRef.current.focusedGroupIds.has(n.user.groupId);
-  /** A node wears the hue of the bubble it's displayed in; identity, interests and friendships are untouched. */
-  const toneFor = (u: GraphUser): ToneKey => {
-    if (u.groupId === null) return "stone";
-    const g = groups.current.get(u.groupId);
-    return g ? groupHue(g) : "stone";
-  };
 
   const targetFor = useCallback((n: NodeData) => {
     const L = layout.current;
@@ -293,12 +246,13 @@ export default function SocialGraph(props: Props) {
     const ids = props.graph.groups.map((g) => g.id);
     const focused = ids.filter((id) => props.focusedGroupIds.has(id));
     const unfocused = ids.filter((id) => !props.focusedGroupIds.has(id));
-    layout.current = computeLayout(focused, unfocused, props.myGroupId);
-    // Bubble colors follow the layout so neighbors differ; shared with the rest of the UI.
-    groupHues.set(assignGroupHues(props.graph.groups, layout.current.anchors, groupHues.get()));
     const sizes = new Map<number, number>();
     for (const u of props.graph.users) if (u.groupId !== null) sizes.set(u.groupId, (sizes.get(u.groupId) ?? 0) + 1);
     layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE);
+    for (const [id, offset] of groupOffsets.current) {
+      const anchor = layout.current.anchors.get(id);
+      if (anchor) layout.current.anchors.set(id, { x: anchor.x + offset.x, y: anchor.y + offset.y });
+    }
     applyCollide();
     fgRef.current?.d3ReheatSimulation();
   }, [focusKey, groupKey, props.myGroupId, props.meId, applyCollide]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -315,17 +269,10 @@ export default function SocialGraph(props: Props) {
     const seen = new Set<string>();
     for (const u of graph.users) {
       seen.add(u.id);
+      const color = INTEREST_COLOR.get(u.interestIds[0]) ?? "#60A5FA";
       const existing = nodes.get(u.id);
       if (!existing) {
-        const key = toneFor(u);
-        const node: NodeData = {
-          id: u.id,
-          user: u,
-          tone: { key, from: key, at: 0 },
-          color: "",
-          phase: Math.random() * Math.PI * 2,
-          bornAt: initial ? 0 : now,
-        };
+        const node: NodeData = { id: u.id, user: u, color, phase: Math.random() * Math.PI * 2, bornAt: initial ? 0 : now };
         const t = targetFor(node);
         node.x = t.x + (Math.random() - 0.5) * 80;
         node.y = t.y + (Math.random() - 0.5) * 80;
@@ -338,6 +285,7 @@ export default function SocialGraph(props: Props) {
           existing.fx = existing.fy = undefined;
         }
         existing.user = u;
+        existing.color = color;
       }
     }
     for (const id of [...nodes.keys()]) {
@@ -382,7 +330,11 @@ export default function SocialGraph(props: Props) {
   }, [props.roomGroupId]);
 
   const renderPos = (n: NodeData) => {
-    const b = bob(n.phase, frame.current.t, motionOK.current && drag.current?.node !== n);
+    const b = bob(
+      n.phase,
+      frame.current.t,
+      motionOK.current && drag.current?.node !== n && groupDrag.current?.groupId !== n.user.groupId,
+    );
     return { x: (n.x ?? 0) + b.dx, y: (n.y ?? 0) + b.dy };
   };
 
@@ -392,24 +344,7 @@ export default function SocialGraph(props: Props) {
       const t = performance.now();
       const f = frame.current;
       f.t = t;
-      const light = document.documentElement.classList.contains("light");
-      if (!f.pal || light !== f.light) f.pal = readPalette();
-      f.light = light;
-      const pal = f.pal;
-
-      // Resolve this frame's colors: bubbles from the shared assignment, people from the bubble they're shown in.
-      const hues = groupHues.get();
-      for (const g of groups.current.values()) {
-        const key = groupHue(g, hues);
-        const tone = groupTones.current.get(g.id);
-        if (!tone) groupTones.current.set(g.id, { key, from: key, at: 0 });
-        else retarget(tone, key, t);
-      }
-      for (const n of nodes.values()) {
-        retarget(n.tone, toneFor(n.user), t);
-        n.color = resolve(n.tone, pal, t);
-      }
-
+      f.light = document.documentElement.classList.contains("light");
       const { meId, friendIds, selectedId, roomGroupId } = propsRef.current;
       const friends = new Set(friendIds);
       const hover = hoverNode.current?.id ?? null;
@@ -477,21 +412,23 @@ export default function SocialGraph(props: Props) {
         if (alpha <= 0.01) continue;
         const pulseAt = pulses.current.get(g.id);
         const pulse = pulseAt ? clamp01(1 - (t - pulseAt) / 1100) : 0;
-        const color = resolve(groupTones.current.get(g.id)!, pal, t);
-        // Flat, paper-like tint: a little denser in the middle, a clean edge, no glow.
-        const fillCore = focusedGroup ? (f.light ? 0.15 : 0.13) + (hovered || isFocus ? 0.07 : 0) : 0.07;
+        const fillBoost = (hovered || isFocus ? 0.22 : 0.14) + (f.light ? 0.06 : 0);
 
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.beginPath();
         smoothPath.context(ctx)(hull);
         const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        grad.addColorStop(0, rgba(color, fillCore + pulse * 0.08));
-        grad.addColorStop(1, rgba(color, fillCore * 0.55));
+        grad.addColorStop(0, rgba(g.color, focusedGroup ? fillBoost + f.fade * (isFocus ? 0.08 : 0) : 0.08));
+        grad.addColorStop(1, rgba(g.color, focusedGroup ? 0.05 : 0.03));
         ctx.fillStyle = grad;
         ctx.fill();
-        ctx.lineWidth = (focusedGroup ? 1.3 + pulse * 2 + (isFocus ? 0.5 : 0) : 1) / Math.max(gs, 0.5);
-        ctx.strokeStyle = rgba(color, (focusedGroup ? 0.5 : 0.3) + (hovered ? 0.25 : 0) + pulse * 0.4 + (isFocus ? 0.2 : 0));
+        if (focusedGroup) {
+          ctx.shadowColor = g.color;
+          ctx.shadowBlur = (isFocus ? 50 : 30) + pulse * 30;
+        }
+        ctx.lineWidth = (focusedGroup ? 1.6 + pulse * 2.5 : 1) / Math.max(gs, 0.5);
+        ctx.strokeStyle = rgba(g.color, (focusedGroup ? 0.35 : 0.22) + (hovered ? 0.25 : 0) + pulse * 0.6 + (isFocus ? 0.3 : 0));
         if (!members.length) ctx.setLineDash([6 / gs, 6 / gs]);
         ctx.stroke();
         ctx.restore();
@@ -502,12 +439,17 @@ export default function SocialGraph(props: Props) {
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
           ctx.font = `600 ${(focusedGroup ? 15 : 12) / gs}px ${fonts.current.heading}`;
-          ctx.fillStyle = pal.ink;
+          ctx.fillStyle = f.light ? "#0b1230" : "#e6ecff";
+          if (focusedGroup && !f.light) {
+            ctx.shadowColor = g.color;
+            ctx.shadowBlur = 12;
+          }
           ctx.fillText(g.name, cx, top - 6 / gs);
+          ctx.shadowBlur = 0;
           if (focusedGroup) {
             ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
-            ctx.fillStyle = pal.inkMuted;
-            const here = g.activeCount ? `${g.activeCount} here now` : "empty · fades after 30 days";
+            ctx.fillStyle = f.light ? rgba(g.color, 1) : rgba(g.color, 0.9);
+            const here = g.activeCount ? `${g.activeCount} here now` : "empty · fading in 24h";
             ctx.fillText(`${g.category} · ${here}`, cx, top - 6 / gs - 17 / gs);
           }
           ctx.restore();
@@ -541,7 +483,8 @@ export default function SocialGraph(props: Props) {
     }
 
     const born = n.bornAt ? clamp01((f.t - n.bornAt) / 650) : 1;
-    const base = NODE_R * (focused ? 1 : UNFOCUSED_SCALE);
+    const isMe = n.id === meId;
+    const base = NODE_R * (focused ? 1 : UNFOCUSED_SCALE) * (isMe ? 1.3 : 1);
     const r = base * (hovered || selected ? 1.2 : 1) * Math.max(0, easeOutBack(born)) * (drag.current?.node === n ? 1.15 : 1);
 
     ctx.save();
@@ -561,21 +504,18 @@ export default function SocialGraph(props: Props) {
       ctx.stroke();
     }
 
-    const pal = f.pal!;
-    // Flat disc with a soft drop shadow (depth, not glow) and a thin rim in the paper color.
     if (!n.user.away && focused) {
-      ctx.shadowColor = pal.shadow;
-      ctx.shadowBlur = hovered || selected ? 12 : 6;
-      ctx.shadowOffsetY = hovered || selected ? 3 : 1.5;
+      ctx.shadowColor = n.color;
+      ctx.shadowBlur = (hovered || selected ? 30 : 16) * (f.light ? 0.6 : 1);
     }
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = n.color;
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    ctx.lineWidth = 1.5 / gs;
-    ctx.strokeStyle = rgba(pal.nodeEdge, 0.85);
+
+    ctx.lineWidth = 1 / gs;
+    ctx.strokeStyle = f.light ? "rgba(11,18,48,0.25)" : "rgba(255,255,255,0.3)";
     ctx.stroke();
 
     const img = n.user.avatarUrl ? images.current.get(n.user.avatarUrl) : undefined;
@@ -592,23 +532,29 @@ export default function SocialGraph(props: Props) {
       ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
       ctx.restore();
     } else if (r * gs > 9) {
-      ctx.font = `600 ${r * 0.78}px ${fonts.current.sans}`;
+      ctx.font = `700 ${r * 0.8}px ${fonts.current.sans}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = rgba(pal.nodeInk, 0.92);
+      ctx.fillStyle = "rgba(3,5,12,0.85)";
       ctx.fillText(initials(n.user.name), x, y + r * 0.05);
     }
 
-    if (n.id === meId) {
+    if (isMe) {
       ctx.beginPath();
       ctx.arc(x, y, r + 4 / gs, 0, Math.PI * 2);
       ctx.lineWidth = 2 / gs;
-      ctx.strokeStyle = pal.ink;
+      ctx.strokeStyle = f.light ? "#0b1230" : "#ffffff";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, r + 8 / gs, 0, Math.PI * 2);
+      ctx.lineWidth = 1.5 / gs;
+      ctx.strokeStyle = rgba(n.color, 0.9);
       ctx.stroke();
     }
     if (f.ringed?.has(n.id)) {
       ctx.beginPath();
-      ctx.arc(x, y, r + 5 / gs, 0, Math.PI * 2);
+      ctx.arc(x, y, r + (isMe ? 11 : 5) / gs, 0, Math.PI * 2);
       ctx.lineWidth = 1.4 / gs;
       ctx.strokeStyle = rgba(n.color, 0.75);
       ctx.stroke();
@@ -618,7 +564,7 @@ export default function SocialGraph(props: Props) {
       ctx.font = `500 ${11.5 / gs}px ${fonts.current.sans}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillStyle = rgba(pal.ink, 0.88);
+      ctx.fillStyle = f.light ? "rgba(11,18,48,0.85)" : "rgba(230,236,255,0.9)";
       const label = n.id === meId ? `${n.user.name} (you)` : n.user.name;
       ctx.fillText(label, x, y + r + 5 / gs);
     }
@@ -635,7 +581,7 @@ export default function SocialGraph(props: Props) {
     const b = renderPos(e);
     const vivid = f.vivid?.has(l.key) ?? false;
 
-    let alpha = f.highlight ? (vivid ? 0.9 : 0.05) : f.light ? 0.3 : 0.22;
+    let alpha = f.highlight ? (vivid ? 0.95 : 0.05) : f.light ? 0.3 : 0.2;
     if (s.user.away || e.user.away) alpha *= 0.6;
     if (!isFocused(s) || !isFocused(e)) alpha *= 0.5;
     if (focus.current && (s.user.groupId !== focus.current.groupId || e.user.groupId !== focus.current.groupId)) {
@@ -656,10 +602,11 @@ export default function SocialGraph(props: Props) {
       grad.addColorStop(0, s.color);
       grad.addColorStop(1, e.color);
       ctx.strokeStyle = grad;
-      ctx.lineWidth = Math.max(2, 1.6 / gs);
-      ctx.lineCap = "round";
+      ctx.lineWidth = Math.max(2.4, 1.8 / gs);
+      ctx.shadowColor = s.color;
+      ctx.shadowBlur = f.light ? 4 : 10;
     } else {
-      ctx.strokeStyle = f.pal?.link ?? "#c8bfb2";
+      ctx.strokeStyle = f.light ? "rgb(60,80,150)" : "rgb(160,180,255)";
       ctx.lineWidth = Math.max(1, 0.8 / gs);
     }
     ctx.stroke();
@@ -707,7 +654,18 @@ export default function SocialGraph(props: Props) {
     const fg = fgRef.current;
     if (!fg) return null;
     const { x, y } = fg.screen2GraphCoords(sx, sy);
-    for (const [id, hull] of hulls.current) if (polygonContains(hull, [x, y])) return id;
+    const edgeTolerance = 12 / fg.zoom();
+    const distanceToEdge = (a: Pt, b: Pt) => {
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const lengthSquared = dx * dx + dy * dy;
+      const t = lengthSquared ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / lengthSquared)) : 0;
+      return Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy));
+    };
+    for (const [id, hull] of hulls.current) {
+      if (polygonContains(hull, [x, y])) return id;
+      if (hull.some((point, i) => distanceToEdge(point, hull[(i + 1) % hull.length]) <= edgeTolerance)) return id;
+    }
     return null;
   };
 
@@ -715,23 +673,48 @@ export default function SocialGraph(props: Props) {
     const rect = wrapRef.current!.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
+  const nodeAt = (sx: number, sy: number) => {
+    const fg = fgRef.current;
+    if (!fg) return null;
+    const point = fg.screen2GraphCoords(sx, sy);
+    for (const n of [...nodes.values()].reverse()) {
+      if (!isVisible(n)) continue;
+      const pos = renderPos(n);
+      const scale = isFocused(n) ? 1 : UNFOCUSED_SCALE;
+      const radius = NODE_R * scale * (n.id === propsRef.current.meId ? 1.3 : 1) * 1.2;
+      if (Math.hypot(point.x - pos.x, point.y - pos.y) <= radius) return n;
+    }
+    return null;
+  };
   const inRoom = props.roomGroupId !== null;
 
   return (
     <div
       ref={wrapRef}
       className="absolute inset-0"
-      // Your own circle can be dragged: drop it in another bubble to join, or anywhere to park it.
+      // Your circle and whole bubbles can move independently; neither gesture pans the camera.
       onPointerDownCapture={(e) => {
-        const n = propsRef.current.meId ? nodes.get(propsRef.current.meId) : null;
         const fg = fgRef.current;
-        if (inRoom || !n || !fg || e.button !== 0) return;
+        if (inRoom || !fg || e.button !== 0) return;
         const p = localPoint(e);
-        const pointer = fg.screen2GraphCoords(p.x, p.y);
-        const avatar = renderPos(n);
-        if (Math.hypot(pointer.x - avatar.x, pointer.y - avatar.y) > NODE_R * 1.25) return;
-        drag.current = { node: n, startX: e.clientX, startY: e.clientY, moved: false };
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        const hitNode = nodeAt(p.x, p.y);
+        if (hitNode) {
+          if (hitNode.id !== propsRef.current.meId) return;
+          drag.current = { node: hitNode, startX: e.clientX, startY: e.clientY, moved: false };
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          return;
+        }
+        const groupId = groupAt(p.x, p.y);
+        if (groupId === null) return;
+        const point = fg.screen2GraphCoords(p.x, p.y);
+        groupDrag.current = {
+          groupId,
+          startX: e.clientX,
+          startY: e.clientY,
+          lastGraphX: point.x,
+          lastGraphY: point.y,
+          moved: false,
+        };
       }}
       onWheelCapture={(e) => {
         if (inRoom) return;
@@ -759,17 +742,55 @@ export default function SocialGraph(props: Props) {
           }
           return;
         }
+        const gd = groupDrag.current;
+        if (gd && fg) {
+          if (!gd.moved && Math.hypot(e.clientX - gd.startX, e.clientY - gd.startY) > 4) {
+            gd.moved = true;
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          }
+          if (gd.moved) {
+            const p = localPoint(e);
+            const point = fg.screen2GraphCoords(p.x, p.y);
+            const dx = point.x - gd.lastGraphX;
+            const dy = point.y - gd.lastGraphY;
+            gd.lastGraphX = point.x;
+            gd.lastGraphY = point.y;
+
+            const anchor = layout.current.anchors.get(gd.groupId);
+            if (anchor) layout.current.anchors.set(gd.groupId, { x: anchor.x + dx, y: anchor.y + dy });
+            const offset = groupOffsets.current.get(gd.groupId) ?? { x: 0, y: 0 };
+            groupOffsets.current.set(gd.groupId, { x: offset.x + dx, y: offset.y + dy });
+            for (const n of nodes.values()) {
+              if (n.user.groupId !== gd.groupId) continue;
+              n.x = (n.x ?? 0) + dx;
+              n.y = (n.y ?? 0) + dy;
+              if (n.fx !== undefined) n.fx += dx;
+              if (n.fy !== undefined) n.fy += dy;
+            }
+            wrapRef.current!.style.cursor = "grabbing";
+          }
+          return;
+        }
         const p = localPoint(e);
         hoverGroup.current = inRoom ? null : groupAt(p.x, p.y);
         const overMe = hoverNode.current?.id === propsRef.current.meId && !inRoom;
-        wrapRef.current!.style.cursor = overMe ? "grab" : hoverNode.current || hoverGroup.current !== null ? "pointer" : "";
+        const overGroup = !hoverNode.current && hoverGroup.current !== null;
+        wrapRef.current!.style.cursor = overMe || overGroup ? "grab" : hoverNode.current ? "pointer" : "";
       }}
       onPointerUp={(e) => {
         const d = drag.current;
         drag.current = null;
+        const gd = groupDrag.current;
+        groupDrag.current = null;
+        if (gd?.moved) {
+          suppressClick.current = true;
+          setTimeout(() => (suppressClick.current = false), 100);
+          wrapRef.current!.style.cursor = "";
+          return;
+        }
         if (!d || !d.moved) return;
         suppressClick.current = true;
-        setTimeout(() => (suppressClick.current = false), 0);
+        setTimeout(() => (suppressClick.current = false), 100);
         const p = localPoint(e);
         const id = groupAt(p.x, p.y);
         const g = id === null ? undefined : groups.current.get(id);
@@ -780,7 +801,10 @@ export default function SocialGraph(props: Props) {
         // dropped in open space (or back home): it stays where you put it
         wrapRef.current!.style.cursor = "";
       }}
-      onPointerLeave={() => (hoverGroup.current = null)}
+      onPointerLeave={() => {
+        hoverGroup.current = null;
+        if (!groupDrag.current?.moved) groupDrag.current = null;
+      }}
     >
       {size.w > 0 && (
         <ForceGraph2D<NodeData, LinkData>
@@ -797,6 +821,16 @@ export default function SocialGraph(props: Props) {
             return typeof s === "object" && typeof t === "object" && isVisible(s) && isVisible(t);
           }}
           nodeCanvasObject={nodeCanvasObject}
+          nodePointerAreaPaint={(obj, color, ctx) => {
+            const n = obj as NodeData;
+            const pos = renderPos(n);
+            const scale = isFocused(n) ? 1 : UNFOCUSED_SCALE;
+            const radius = NODE_R * scale * (n.id === propsRef.current.meId ? 1.3 : 1) * 1.2;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+          }}
           linkCanvasObject={linkCanvasObject}
           linkCanvasObjectMode={() => "replace"}
           onRenderFramePre={onRenderFramePre}
@@ -806,12 +840,12 @@ export default function SocialGraph(props: Props) {
           maxZoom={6}
           enableNodeDrag={false}
           enableZoomInteraction={!inRoom}
-          enablePanInteraction={() => !inRoom && !(hoverNode.current && hoverNode.current.id === propsRef.current.meId)}
+          enablePanInteraction={false}
           showPointerCursor={false}
           cooldownTime={12000}
           d3VelocityDecay={0.35}
           onNodeHover={(n) => {
-            if (drag.current) return;
+            if (drag.current || groupDrag.current?.moved) return;
             hoverNode.current = (n as NodeData | null) ?? null;
           }}
           onNodeClick={(n) => {
@@ -820,7 +854,11 @@ export default function SocialGraph(props: Props) {
           }}
           onBackgroundClick={(e) => {
             if (suppressClick.current) return;
-            const id = inRoom ? null : groupAt(e.offsetX, e.offsetY);
+            const id = groupAt(e.offsetX, e.offsetY);
+            if (inRoom) {
+              if (id !== propsRef.current.roomGroupId) propsRef.current.onBackgroundClick();
+              return;
+            }
             const g = id === null ? undefined : groups.current.get(id);
             if (!g) return propsRef.current.onBackgroundClick();
             // single click enters; a second click within the window opens "Add to bookmark" instead

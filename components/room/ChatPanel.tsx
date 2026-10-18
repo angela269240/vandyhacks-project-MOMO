@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Loader2, SendHorizontal, Sparkles, X } from "lucide-react";
+import { Loader2, SendHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/profile/Avatar";
@@ -13,7 +13,7 @@ const hourLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: "
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 /**
- * Room chat: hour buckets with their recap cards, and a composer (Enter sends, Shift+Enter is a newline).
+ * Room chat: hour buckets and a composer (Enter sends, Shift+Enter is a newline).
  * The draft lives in the room connection, so it survives minimizing and reconnects.
  */
 export function ChatPanel({
@@ -107,15 +107,6 @@ export function ChatPanel({
               {hourLabel(h.hourStart)}
               <span className="h-px flex-1 bg-white/10" />
             </div>
-            {h.summary && (
-              <details className="group mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium" style={{ color }}>
-                  <Sparkles className="size-3.5" aria-hidden /> Recap of this hour
-                  <ChevronDown className="ml-auto size-3.5 transition group-open:rotate-180" aria-hidden />
-                </summary>
-                <p className="mt-2 text-sm leading-relaxed text-foreground/85">{h.summary}</p>
-              </details>
-            )}
             <ul className="flex flex-col gap-3">
               {h.messages.map((m) => {
                 const who = people.get(m.userId);

@@ -143,7 +143,7 @@ export function RoomHeader({
             </p>
             <p className="text-xs leading-relaxed text-muted-foreground">
               Minimize keeps you in the room while you look around the map. Leaving keeps you on the map as “away” for
-              24 hours. A room left empty for 30 days fades away.
+              24 hours. A room left empty for 24 hours fades away.
             </p>
           </PopoverContent>
         </Popover>

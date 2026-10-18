@@ -28,7 +28,7 @@ type GroupRow = {
   LAST_EXIT_AT: Date | null;
 };
 
-type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string; SUMMARY: string | null };
+type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string };
 
 const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 
@@ -73,7 +73,7 @@ function toGroup(r: GroupRow): Group {
 
 function toChatHour(r: ChatRow): ChatHour {
   const messages = typeof r.MESSAGES === "string" ? (JSON.parse(r.MESSAGES) as ChatMessage[]) : r.MESSAGES;
-  return { hourStart: iso(r.HOUR_START)!, messages, summary: r.SUMMARY };
+  return { hourStart: iso(r.HOUR_START)!, messages };
 }
 
 const pair = (x: string, y: string) => (x < y ? { a: x, b: y } : { a: y, b: x });
@@ -151,7 +151,7 @@ export const oracleStore: Store = {
     return this.getUser(id);
   },
 
-  async getGraph(now, lingerMs, vacancyMs) {
+  async getGraph(now, lingerMs) {
     const [users, groups, friendships] = await Promise.all([
       query<UserRow>(USER_SELECT),
       query<GroupRow>(GROUP_SELECT),
@@ -163,7 +163,6 @@ export const oracleStore: Store = {
       friendships.map((f) => ({ a: f.USER_A, b: f.USER_B })),
       now,
       lingerMs,
-      vacancyMs,
     );
   },
 
@@ -172,8 +171,8 @@ export const oracleStore: Store = {
       const rows = await withConnection(async (conn) => {
         const res = await conn.execute(
           `INSERT INTO interest_groups (name, color, category, created_by)
-           VALUES (:name, :color, :category, :by) RETURNING id INTO :id`,
-          { name: name.trim(), color, category, by: createdBy, id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
+           VALUES (:name, :color, :category, :byUser) RETURNING id INTO :id`,
+          { name: name.trim(), color, category, byUser: createdBy, id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
         );
         await conn.commit();
         return (res.outBinds as { id: number[] }).id;
@@ -297,7 +296,7 @@ export const oracleStore: Store = {
   async getChat(groupId, limitHours) {
     const rows = await query<ChatRow>(
       `SELECT * FROM (
-         SELECT group_id, hour_start, JSON_SERIALIZE(messages) AS messages, summary
+         SELECT group_id, hour_start, JSON_SERIALIZE(messages) AS messages
            FROM group_chat_hours WHERE group_id = :g ORDER BY hour_start DESC
        ) WHERE ROWNUM <= :n ORDER BY hour_start`,
       { g: groupId, n: Math.min(limitHours, 10_000) },
@@ -305,29 +304,8 @@ export const oracleStore: Store = {
     return rows.map(toChatHour);
   },
 
-  async listUnsummarizedHours(before, minMessages) {
-    const rows = await query<ChatRow>(
-      `SELECT group_id, hour_start, JSON_SERIALIZE(messages) AS messages, summary
-         FROM group_chat_hours
-        WHERE summary IS NULL AND hour_start < :before AND JSON_VALUE(messages, '$.size()') >= :min`,
-      { before: new Date(before), min: minMessages },
-    );
-    return rows.map((r) => ({ groupId: r.GROUP_ID, hour: toChatHour(r) }));
-  },
-
-  async setSummary(groupId, hourStart, summary) {
-    await withConnection(async (conn) => {
-      await conn.execute(`UPDATE group_chat_hours SET summary = :s WHERE group_id = :g AND hour_start = :h`, {
-        s: summary,
-        g: groupId,
-        h: new Date(hourStart),
-      });
-      await conn.commit();
-    });
-  },
-
-  async expireGroups(now, vacancyMs) {
-    const cutoff = new Date(now.getTime() - vacancyMs);
+  async expireGroups(now, lingerMs) {
+    const cutoff = new Date(now.getTime() - lingerMs);
     const rows = await query<GroupRow>(
       `${GROUP_SELECT} g
         WHERE last_exit_at < :cutoff

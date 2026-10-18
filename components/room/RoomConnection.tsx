@@ -99,7 +99,7 @@ function appendChat(hours: ChatHour[], hourStart: string, message: ChatMessage):
   const key = messageKey(message);
   const existing = hours.find((h) => h.hourStart === hourStart);
   if (existing?.messages.some((m) => messageKey(m) === key)) return hours;
-  if (!existing) return [...hours, { hourStart, messages: [message], summary: null }].sort((a, b) => a.hourStart.localeCompare(b.hourStart));
+  if (!existing) return [...hours, { hourStart, messages: [message] }].sort((a, b) => a.hourStart.localeCompare(b.hourStart));
   return hours.map((h) =>
     h === existing ? { ...h, messages: [...h.messages, message].sort((a, b) => a.ts.localeCompare(b.ts)) } : h,
   );

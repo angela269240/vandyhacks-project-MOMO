@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CATEGORIES } from "@/lib/categories";
-import { hueVar, preferredHue } from "@/lib/colors";
+import { colorForName } from "@/lib/colors";
 import { ApiError, api } from "@/lib/client/api";
 import { categorySchema, groupNameSchema } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
@@ -25,8 +25,7 @@ export function NewGroupDialog({
   const [category, setCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // preview of the bubble's starting hue (the map may shift it to stand apart from its neighbors)
-  const color = hueVar(preferredHue(name || "x"));
+  const color = colorForName(name || "x");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +62,7 @@ export function NewGroupDialog({
             <span
               aria-hidden
               className="absolute top-1/2 left-3 size-3 -translate-y-1/2 rounded-full transition-colors"
-              style={{ background: color }}
+              style={{ background: color, boxShadow: `0 0 10px ${color}` }}
             />
             <Input
               autoFocus
