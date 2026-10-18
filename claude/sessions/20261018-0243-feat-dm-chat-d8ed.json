@@ -1,0 +1,99 @@
+{
+  "id": "20261018-0243-feat-dm-chat-d8ed",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "feat/dm-chat",
+  "base": "d418941",
+  "started": "2026-10-18T07:43:16.934Z",
+  "ended": "2026-10-18T09:00:00Z",
+  "status": "done",
+  "goal": "Direct-message chat: chat icon on the profile mini window opens a resizable chat window bottom-left; 60-day history in the DB keyed by a unique chat key",
+  "summary": "One-to-one chat. The profile mini window (ProfileCard) has a chat icon for anyone but yourself; it opens DirectChatWindow, docked bottom-left (z-50), resizable from the top edge, right edge and top-right corner (min 280x300, clamped to the viewport, size remembered in localStorage orbit.dmSize). One window at a time (hooks/useDm.tsx DmProvider in Providers); opening another person's chat switches it. Storage: new table direct_chats, one row per pair, PK chat_key = both user ids sorted and joined with ':' (lib/dm.ts dmKey), messages as a JSON array. Messages older than 60 days are dropped on every read/append and by the daily expire-groups cron (expireDirectChats), which also deletes chats quiet for 60 days. API: GET/POST /api/dm/[userId] (device key required for both, zod chatSchema, 400 for yourself). Live updates: POST broadcasts lobby event {type:'dm', payload:{from,to}} with no text; Providers revalidates that chat and, if the window isn't showing that person, toasts 'New message from X' with an Open action. 15s SWR poll as a safety net. Friends menu (components/friends/FriendsMenu.tsx): a Users icon right of the requests bell in the map top bar opens a dropdown of accepted friends (people in a room first, green dot), each with a message icon. Hovering a row shows their profile (bio, interests, shared ones tinted, Message button) to the left of the list. useDm.openChat bumps a focusNonce, so opening the chat that's already open never adds a window; it refocuses the composer.",
+  "claims": [
+    "db/schema.sql",
+    "scripts/migrate.ts",
+    "lib/dm.ts",
+    "lib/types.ts",
+    "lib/store/types.ts",
+    "lib/store/memory.ts",
+    "lib/store/oracle.ts",
+    "app/api/dm/[userId]/route.ts",
+    "app/api/cron/expire-groups/route.ts",
+    "hooks/useDm.tsx",
+    "components/dm/DirectChatWindow.tsx",
+    "components/Providers.tsx",
+    "components/profile/ProfileCard.tsx",
+    "components/friends/FriendsMenu.tsx",
+    "components/map/MapScene.tsx"
+  ],
+  "files_touched": [
+    "db/schema.sql",
+    "scripts/migrate.ts",
+    "lib/dm.ts",
+    "lib/types.ts",
+    "lib/store/types.ts",
+    "lib/store/memory.ts",
+    "lib/store/oracle.ts",
+    "app/api/dm/[userId]/route.ts",
+    "app/api/cron/expire-groups/route.ts",
+    "hooks/useDm.tsx",
+    "components/dm/DirectChatWindow.tsx",
+    "components/Providers.tsx",
+    "components/profile/ProfileCard.tsx",
+    "components/friends/FriendsMenu.tsx",
+    "components/map/MapScene.tsx"
+  ],
+  "commits": [
+    "86f4883"
+  ],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Chats are stored in Oracle (direct_chats), not OCI Object Storage",
+      "why": "User asked for the existing database with a unique key per chat; read as one DB row per pair keyed by chat_key."
+    },
+    {
+      "what": "The lobby 'dm' event carries only from/to, never the text",
+      "why": "Everyone listens on the lobby channel; the recipient fetches the text with their device key."
+    },
+    {
+      "what": "Window uses bg-popover + backdrop-blur-xl, not .glass",
+      "why": ".glass/--card are ~88% opaque, so the map sidebar text showed through the chat."
+    },
+    {
+      "what": "Messages are allowed between any two users, not only friends",
+      "why": "Spec says any user's mini window has the icon."
+    },
+    {
+      "what": "Chat window has no overflow-hidden; resize handles overhang the edge by 4px",
+      "why": "With overflow-hidden + rounded-2xl the rounded corner clipped the corner handle, so drags there fell through to the map and panned it (found during the demo)."
+    },
+    {
+      "what": "Hover preview is a child of the popover, offset by the row's position, with pr-2 padding instead of a margin as the gap",
+      "why": "Keeps the mouse inside the popup while moving from the row to the preview, so the Message button in the preview is reachable. Hidden below sm (no hover on phones; the row's message icon covers it)."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "In-memory preview (scratch worktree, no env): two test users; POST/GET /api/dm both sides share one key, 401 without identity, 400 for self and blank text. UI: chat icon on Bo's card opens the window bottom-left with history; Enter sends; message from the other side appears live over SSE; corner drag resizes (340x440 -> 408x520) and persists; with the window closed an incoming message shows a 'New message from Bo Tester' toast with Open. Not tested against Oracle or LiveKit. Demo pass (Maya/Jordan): corner-resize clipping bug found and fixed; resize works on first drag; toast Open reopens the chat with the new message. Friends menu: lists 3 friends, hover preview aligns with the row, Message in the preview opens Jordan's chat, Message again from the list keeps 1 window and focuses its composer."
+  },
+  "next_steps": [
+    "Human: apply the direct_chats table to the shared DB with `npm run db:migrate -- --upgrade` (additive, safe to re-run). Until then DM routes return 500 on the Oracle store.",
+    "Open a PR from nobell/dev to main when ready."
+  ],
+  "open_questions": [
+    "Should DMs be limited to friends?",
+    "No unread badge yet for chats you haven't opened; only a toast."
+  ],
+  "blockers": [],
+  "conflict_notes": [
+    "memory store key bumped __socialMapperMemoryV6 -> V7 (new dms map).",
+    "LobbyEvent gained a 'dm' variant; Providers' LobbyListener returns early for it and skips refreshGraph.",
+    "Merged into nobell/dev (which also carries 320483a, friendship-distance sizing). MapScene.tsx: FriendsMenu sits right after RequestsBell in the top bar.",
+    "Merging into nobell/dev conflicted in components/map/SocialGraph.tsx (main's drag-groups vs nobell/dev's friendship-distance sizing, not DM code). Kept main's structure (isDragged(n), exact hitRadius without the old 1.2 slop) and used sizeFactor(n) for the drawn radius and hitRadius. Left main's wanderer-clearance line (NODE_R * (me ? 1.3 : 1)) as is. Typecheck + lint pass after the merge."
+  ]
+}

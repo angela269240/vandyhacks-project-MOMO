@@ -1,13 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { INTERESTS } from "../interests";
 import { buildSeedWorld } from "../seed-data";
+import { dmCutoff, dmKey, pruneDm } from "../dm";
 import { joinNotes, notesExpiry } from "../notes";
-import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, ProfileInput, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, ProfileInput, Report, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
 type Friendship = { a: string; b: string; status: "pending" | "accepted"; requestedBy: string };
 
-type StoredUser = User & { deviceKeyHash: string; bookmarks: Bookmark[] };
+type StoredUser = User & { deviceKeyHash: string; email: string | null; bookmarks: Bookmark[] };
 
 type State = {
   users: Map<string, StoredUser>;
@@ -17,6 +19,12 @@ type State = {
   friendships: Map<string, Friendship>;
   chat: Map<string, ChatHour & { groupId: number }>;
   notes: Map<number, GroupNotes>;
+  /** dmKey(a, b) -> messages, oldest first */
+  dms: Map<string, ChatMessage[]>;
+  codes: Map<string, { hash: string; expiresAt: number; attempts: number }>;
+  /** newest last; `key`s already reported */
+  reports: Report[];
+  reportKeys: Set<string>;
   nextGroupId: number;
 };
 
@@ -26,7 +34,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 function seededState(): State {
   const now = new Date();
   const world = buildSeedWorld(now, { crowd: true }); // local demo only: two 20-person groups, the rest 4-6
-  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), notes: new Map(), nextGroupId: 1 };
+  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), notes: new Map(), dms: new Map(), codes: new Map(), reports: [], reportKeys: new Set(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
     const id = state.nextGroupId++;
@@ -54,6 +62,7 @@ function seededState(): State {
       memberOf: u.memberOf.map((i) => i + 1),
       bookmarks: [],
       deviceKeyHash: "seed",
+      email: null,
     });
   }
   for (const f of world.friendships) state.friendships.set(pairKey(f.a, f.b), f);
@@ -66,12 +75,13 @@ function seededState(): State {
 
 // Survive Next.js dev hot reloads: one world per server process.
 // Bump the key when the stored shape changes so a running dev server reseeds instead of crashing.
-const g = globalThis as unknown as { __socialMapperMemoryV5?: State };
-const state = () => (g.__socialMapperMemoryV5 ??= seededState());
+const g = globalThis as unknown as { __socialMapperMemoryV7?: State };
+const state = () => (g.__socialMapperMemoryV7 ??= seededState());
 
 function publicUser(u: StoredUser): User {
-  const { deviceKeyHash, ...rest } = u;
+  const { deviceKeyHash, email, ...rest } = u;
   void deviceKeyHash;
+  void email;
   const live = (ids: number[]) => ids.filter((id) => state().groups.has(id));
   return {
     ...rest,
@@ -94,7 +104,7 @@ export const memoryStore: Store = {
     return INTERESTS;
   },
 
-  async createUser(input: ProfileInput, id: string, deviceKeyHash: string) {
+  async createUser(input: ProfileInput, id: string, deviceKeyHash: string, email: string | null) {
     const user: StoredUser = {
       id,
       name: input.name,
@@ -108,6 +118,7 @@ export const memoryStore: Store = {
       memberOf: [],
       bookmarks: [],
       deviceKeyHash,
+      email,
     };
     state().users.set(id, user);
     return publicUser(user);
@@ -284,6 +295,64 @@ export const memoryStore: Store = {
       expired.push({ group: grp, chat });
     }
     return expired;
+  },
+
+  async saveEmailCode(key, codeHash, expiresAt) {
+    state().codes.set(key, { hash: codeHash, expiresAt: expiresAt.getTime(), attempts: 0 });
+  },
+
+  async checkEmailCode(key, codeHash, now, maxAttempts) {
+    const codes = state().codes;
+    const c = codes.get(key);
+    if (!c || c.expiresAt <= now.getTime()) {
+      codes.delete(key);
+      return "missing";
+    }
+    if (c.hash === codeHash) {
+      codes.delete(key);
+      return "ok";
+    }
+    if (++c.attempts >= maxAttempts) codes.delete(key);
+    return "wrong";
+  },
+
+  async addReports(reports, now) {
+    const s = state();
+    let added = 0;
+    for (const { key, ...r } of reports) {
+      if (s.reportKeys.has(key)) continue;
+      s.reportKeys.add(key);
+      s.reports.push({ ...r, id: randomUUID(), createdAt: now.toISOString() });
+      added++;
+    }
+    return added;
+  },
+
+  async listReports(limit) {
+    return state().reports.slice(-limit).reverse();
+  },
+
+  async getDirectChat(a, b, now) {
+    const key = dmKey(a, b);
+    return { key, messages: pruneDm(state().dms.get(key) ?? [], now) };
+  },
+
+  async appendDirectChat(a, b, message, now) {
+    const s = state();
+    const key = dmKey(a, b);
+    s.dms.set(key, pruneDm([...(s.dms.get(key) ?? []), message], now));
+  },
+
+  async expireDirectChats(now) {
+    const s = state();
+    const cut = dmCutoff(now);
+    let removed = 0;
+    for (const [key, messages] of s.dms) {
+      const kept = messages.filter((m) => m.ts > cut);
+      if (kept.length) s.dms.set(key, kept);
+      else if (s.dms.delete(key)) removed++;
+    }
+    return removed;
   },
 
   async getFriendState(userId) {

@@ -3,13 +3,14 @@
 import { api, type Identity } from "./api";
 import type { ProfileInput, User } from "../types";
 
-/** Creates the demo profile; the photo is optional and a failed upload doesn't undo the profile. */
+/** Creates the profile for a verified school email; the photo is optional and a failed upload doesn't undo the profile. */
 export async function createProfile(
   values: ProfileInput,
   avatarFile: Blob | null,
+  emailToken: string,
 ): Promise<{ user: User; identity: Identity; avatarFailed: boolean }> {
   const { user, deviceKey } = await api<{ user: User; deviceKey: string }>("/api/users", {
-    body: values,
+    body: { ...values, emailToken },
     identity: null,
   });
   const identity = { userId: user.id, deviceKey };

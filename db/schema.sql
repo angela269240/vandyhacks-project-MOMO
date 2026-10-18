@@ -33,6 +33,8 @@ CREATE TABLE users (
   left_group_at    TIMESTAMP WITH TIME ZONE,
   -- [{ "id": "...", "name": "Exam season", "groupIds": [1, 4] }]
   bookmarks        JSON DEFAULT JSON('[]') NOT NULL,
+  -- verified .edu address from sign-up (lib/email-codes.ts); null for seeded and pre-verification profiles
+  email            VARCHAR2(254),
   created_at       TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 )
 /
@@ -76,5 +78,41 @@ CREATE TABLE friendships (
   created_at   TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
   PRIMARY KEY (user_a, user_b),
   CONSTRAINT ck_friend_order CHECK (user_a < user_b)
+)
+/
+-- One-time codes emailed for .edu sign-up and admin sign-in. Only the code's HMAC is kept.
+CREATE TABLE email_codes (
+  code_key    VARCHAR2(300) PRIMARY KEY,
+  code_hash   VARCHAR2(64) NOT NULL,
+  attempts    NUMBER DEFAULT 0 NOT NULL,
+  expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+)
+/
+-- Flags from the daily AI moderation review (lib/moderation.ts), shown on /admin.
+-- report_key hashes the flagged text, so the same text is reported once however many days it's reviewed.
+CREATE TABLE moderation_reports (
+  id          VARCHAR2(36) PRIMARY KEY,
+  report_key  VARCHAR2(64) NOT NULL UNIQUE,
+  category    VARCHAR2(10) NOT NULL CHECK (category IN ('chat', 'note', 'username', 'group')),
+  severity    VARCHAR2(6) NOT NULL CHECK (severity IN ('low', 'medium', 'high')),
+  summary     VARCHAR2(200 CHAR) NOT NULL,
+  reason      VARCHAR2(600 CHAR),
+  excerpt     VARCHAR2(1000 CHAR),
+  user_id     VARCHAR2(36),
+  user_name   VARCHAR2(80 CHAR),
+  group_name  VARCHAR2(60 CHAR),
+  item_at     TIMESTAMP WITH TIME ZONE,
+  created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+)
+/
+-- One-to-one chats (lib/dm.ts). chat_key is both user ids sorted and joined with ':', so each pair has exactly one row.
+-- messages is a JSON array, oldest first; messages older than 60 days are dropped and empty chats deleted.
+CREATE TABLE direct_chats (
+  chat_key    VARCHAR2(80) PRIMARY KEY,
+  user_a      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_b      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  messages    JSON NOT NULL,
+  created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+  updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 )
 /

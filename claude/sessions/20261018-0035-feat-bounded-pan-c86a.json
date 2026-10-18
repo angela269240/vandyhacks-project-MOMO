@@ -1,0 +1,51 @@
+{
+  "id": "20261018-0035-feat-bounded-pan-c86a",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "feat/bounded-camera",
+  "base": "888cf56",
+  "worktree": "/Users/home/Desktop/repositories/oraclehackathon26/momo-bounded-pan",
+  "started": "2026-10-18T05:35:37.663Z",
+  "ended": "2026-10-18T06:20:00.000Z",
+  "status": "done",
+  "goal": "Bounded 2D camera panning on the map: drag to pan, the outermost node stops at the viewport centerline on each axis, zoom-aware, small graphs stay centered.",
+  "summary": "Map now pans by click-dragging anywhere except your own circle. Pan was impossible before because ForceGraph2D had enablePanInteraction={false} and every pointerdown on a node or bubble started a node/bubble drag instead. Camera state stays d3-zoom's transform (no second camera); SocialGraph reads/writes it through fg.centerAt()/fg.zoom(). Pure math lives in components/map/camera.ts (getGraphBounds, getCameraPanBounds, clampCameraPosition, applyDragDelta, smoothBounds) with node:test tests. Per axis: translate t is clamped to [view/2 - max*k, view/2 - min*k] (the outermost node reaches the centerline at the limit); if the graph's span*k + discs + 64px fits the viewport, that axis is locked centered. Bounds come from visible nodes' physics positions (not the render-time bob) and are eased 0.12/frame so the sim never shakes the camera. Clamping: inline during drag and horizontal wheel; vertical wheel (d3-zoom around the cursor) sets snapCamera so the next frame clamps hard; otherwise onRenderFramePre eases the camera back (resize, layout change). Scripted moves (fitFocused, zoomToGroup, setCamera, frameGroup) set cameraHold for their duration so the limits don't fight them, and limits are off while in a room. Click vs drag: CLICK_SLOP 5px; past it the gesture pans and suppressClick blocks node/bubble clicks. Removed: dragging other people's circles inside their bubble (20261017-2300 session) and dragging whole bubbles (groupOffsets); both gestures now pan, as the spec asks. Kept: dragging your own circle onto a bubble to join.",
+  "claims": [
+    "components/map/SocialGraph.tsx",
+    "components/map/camera.ts",
+    "components/map/camera.test.ts"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx",
+    "components/map/camera.ts",
+    "components/map/camera.test.ts"
+  ],
+  "commits": [],
+  "uncommitted": true,
+  "decisions": [
+    "Own pointer pan on the wrapper + fg.centerAt(), not d3-zoom panning: force-graph doesn't expose its d3 zoom behavior, so zoom.constrain() can't be set, and d3 panning would also start on nodes. Wheel zoom stays d3-zoom's (cursor-anchored, default direction per invariant).",
+    "Incremental drag deltas (not offset-from-press): at a limit, moving back moves the graph immediately.",
+    "Within the slop, a no-op fg.centerAt() resets force-graph's isPointerDragging, which otherwise cancels a click on any 1px of movement.",
+    "Pointer capture goes on the canvas (event target), not the wrapper, so force-graph still sees pointerup and its press state doesn't stick.",
+    "Pinch-zoom not added: force-graph's d3 filter already blocks touch gestures while enablePanInteraction is false, so the map had no pinch before either. Single-finger pan works via pointer events + touch-none."
+  ],
+  "verification": {
+    "typecheck": "pass (npm run typecheck)",
+    "lint": "pass (npm run lint)",
+    "build": "not run",
+    "manual": "Built-in browser, 1024x768, in-memory world: bottom/top/left/right limits measured at the centerline (bottom-most y=384 within 0.3px, rightmost x=512.2, leftmost x=512.0, topmost y=384.0); diagonal drag stops on the blocked axis and continues on the free one; wheel zoom in/out at a corner stays clamped; fully zoomed out the graph is locked centered at (512,384) and drags don't move it; drag from a node pans without opening a profile, click opens it; drag from a bubble pans without entering, click enters the room; room exit restores the camera; drag own circle onto a bubble still joins; 768x1024 resize re-clamps; no console errors. Unit: npx tsx --test components/map/camera.test.ts (7/7)."
+  },
+  "next_steps": [
+    "Commit on feat/bounded-camera and open a PR to main.",
+    "When feat/sidebar-search lands, its new MapApi.centerOn() is a scripted camera move: add holdCamera(ms) at its top like the other MapApi camera methods, or the limits will ease against its tween."
+  ],
+  "open_questions": [
+    "Is losing 'drag other people / whole bubbles to rearrange' OK? The spec asks for drags from nodes and bubbles to pan the camera, so those gestures were replaced."
+  ],
+  "blockers": [],
+  "conflict_notes": [
+    "components/map/SocialGraph.tsx: feat/sidebar-search (worktree momo-main) also edits MapApi (adds centerOn) and the padY comment in fitFocused. Keep both: take their centerOn and add holdCamera(ms) to it."
+  ]
+}

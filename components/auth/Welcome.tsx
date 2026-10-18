@@ -41,10 +41,13 @@ const primaryButton =
  */
 export function Welcome({
   name,
+  emailToken,
   onBack,
   onCreated,
 }: {
   name: string;
+  /** proof the school email was verified, from the register step */
+  emailToken: string;
   onBack: () => void;
   onCreated: (identity: Identity) => void;
 }) {
@@ -231,7 +234,7 @@ export function Welcome({
                   submitClassName={primaryButton}
                   onSubmit={async ({ avatarFile, ...values }) => {
                     try {
-                      const { user, identity, avatarFailed } = await createProfile(values, avatarFile);
+                      const { user, identity, avatarFailed } = await createProfile(values, avatarFile, emailToken);
                       if (avatarFailed) toast.error("Couldn't upload your photo");
                       onCreated(identity);
                       toast.success(`Welcome to Orbit, ${user.name.split(" ")[0]}!`, {

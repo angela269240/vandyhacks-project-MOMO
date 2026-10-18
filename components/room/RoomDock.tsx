@@ -1,9 +1,10 @@
 "use client";
 
-import { Headphones, Loader2, LogOut, MessageSquare, Mic, MicOff, MonitorUp, MonitorX } from "lucide-react";
+import { Loader2, LogOut, MessageSquare, Mic, MicOff, MonitorUp, MonitorX, NotebookPen } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { PanelTab } from "./RoomConnection";
 
 type DockAction = {
   id: string;
@@ -15,55 +16,77 @@ type DockAction = {
   blocked?: boolean;
   tone?: "default" | "danger";
   badge?: number;
+  /** a small pulsing dot, e.g. the AI notetaker is listening */
+  live?: boolean;
+  /** opens the side panel on its own tab (aria-expanded instead of aria-pressed) */
+  panel?: boolean;
   onClick: () => void;
 };
 
 /**
- * The room's four primary controls in a floating glass pill. It sits in a reserved footer under the
- * stage, so chat and screen sharing never cover it.
+ * The room's primary controls in a floating glass pill. It sits in a reserved footer under the
+ * stage, so the side panel and screen sharing never cover it. Chat and Notes open the same side panel,
+ * each on its own tab.
  */
 export function RoomDock({
   chatOpen,
+  panelTab,
+  notesListening,
   unread,
   micOn,
-  micJoined,
   screenOn,
   otherSharer,
   connecting,
   onChat,
+  onNotes,
   onMic,
   onScreen,
   onLeave,
 }: {
   chatOpen: boolean;
+  panelTab: PanelTab;
+  /** the AI notetaker is listening */
+  notesListening: boolean;
   unread: number;
   micOn: boolean;
-  micJoined: boolean;
   screenOn: boolean;
   /** first name of someone else who is sharing, if any */
   otherSharer: string | null;
   connecting: boolean;
   onChat: () => void;
+  onNotes: () => void;
   onMic: () => void;
   onScreen: () => void;
   onLeave: () => void;
 }) {
-  const micLabel = micOn ? "Mute" : micJoined ? "Unmute" : "Join voice";
+  const chatOn = chatOpen && panelTab === "chat";
+  const notesOn = chatOpen && panelTab === "notes";
   const actions: DockAction[] = [
     {
       id: "chat",
       label: "Chat",
-      hint: chatOpen ? "Close chat" : "Open chat",
+      hint: chatOn ? "Close chat" : "Open chat",
       icon: <MessageSquare />,
-      active: chatOpen,
-      badge: chatOpen ? 0 : unread,
+      active: chatOn,
+      panel: true,
+      badge: chatOn ? 0 : unread,
       onClick: onChat,
     },
     {
+      id: "notes",
+      label: "Notes",
+      hint: notesOn ? "Close notes" : notesListening ? "Open notes (AI is listening)" : "Open notes",
+      icon: <NotebookPen />,
+      active: notesOn,
+      panel: true,
+      live: notesListening,
+      onClick: onNotes,
+    },
+    {
       id: "mic",
-      label: micLabel,
-      hint: connecting ? "Connecting voice…" : micOn ? "Mute your microphone" : micJoined ? "Unmute your microphone" : "Turn on your microphone to talk",
-      icon: connecting ? <Loader2 className="animate-spin" /> : micOn ? <Mic /> : micJoined ? <MicOff /> : <Headphones />,
+      label: micOn ? "Mute" : "Unmute",
+      hint: connecting ? "Connecting voice…" : micOn ? "Mute your microphone" : "Unmute your microphone",
+      icon: connecting ? <Loader2 className="animate-spin" /> : micOn ? <Mic /> : <MicOff />,
       active: micOn,
       blocked: connecting,
       onClick: onMic,
@@ -95,11 +118,11 @@ export function RoomDock({
               <button
                 onClick={a.onClick}
                 aria-label={a.hint}
-                aria-pressed={a.tone === "danger" || a.id === "chat" ? undefined : Boolean(a.active)}
-                aria-expanded={a.id === "chat" ? chatOpen : undefined}
+                aria-pressed={a.tone === "danger" || a.panel ? undefined : Boolean(a.active)}
+                aria-expanded={a.panel ? Boolean(a.active) : undefined}
                 aria-disabled={a.blocked || undefined}
                 className={cn(
-                  "relative flex h-14 w-[68px] flex-col items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:w-[84px] [&_svg]:size-5",
+                  "relative flex h-14 w-[60px] flex-col items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:w-[84px] [&_svg]:size-5",
                   a.tone === "danger"
                     ? "text-destructive hover:bg-destructive/12"
                     : a.active
@@ -117,6 +140,7 @@ export function RoomDock({
                 {a.badge > 9 ? "9+" : a.badge}
               </span>
             ) : null}
+            {a.live && <span className="absolute top-2.5 right-4 size-1.5 animate-pulse rounded-full bg-(--hue-sage) sm:right-6" aria-hidden />}
           </TooltipTrigger>
           <TooltipContent side="top">{a.hint}</TooltipContent>
         </Tooltip>

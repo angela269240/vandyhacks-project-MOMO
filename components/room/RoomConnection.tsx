@@ -19,6 +19,8 @@ import type { ChatHour, ChatMessage, Group, GroupNotes, RoomEvent as AppRoomEven
  * chat and presence carry on until the user explicitly leaves.
  */
 
+export type PanelTab = "chat" | "notes";
+
 export type RoomStatus = "joining" | "connecting" | "live" | "reconnecting" | "failed";
 
 export type RoomSession = {
@@ -44,9 +46,8 @@ export type Share = {
 export type Voice = {
   /** "local" = no LiveKit configured: your own mic level and a local screen preview, nothing leaves the browser */
   mode: "livekit" | "local" | null;
+  /** everyone joins a room's voice muted; this is whether the mic is unmuted */
   micOn: boolean;
-  /** has the mic been switched on at least once this session ("Join voice" vs "Unmute") */
-  micJoined: boolean;
   screenOn: boolean;
   /** identity -> publishing an unmuted mic; identities that aren't in the map aren't connected to voice */
   micStates: Map<string, boolean>;
@@ -68,8 +69,11 @@ type RoomConnection = {
   hours: ChatHour[];
   sendChat: (text: string) => Promise<void>;
   unread: number;
+  /** the side panel is open; it shows chat or notes (`panelTab`) */
   chatOpen: boolean;
   setChatOpen: (open: boolean) => void;
+  panelTab: PanelTab;
+  setPanelTab: (tab: PanelTab) => void;
   draft: string;
   setDraft: (text: string) => void;
   /** the room's shared notes file (version 0 = none yet) */
@@ -92,7 +96,6 @@ type RoomConnection = {
 const EMPTY_VOICE: Voice = {
   mode: null,
   micOn: false,
-  micJoined: false,
   screenOn: false,
   micStates: new Map(),
   speaking: new Set(),
@@ -156,6 +159,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
   const [voice, setVoice] = useState<Voice>(EMPTY_VOICE);
   const [room, setRoom] = useState<Room | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [panelTab, setPanelTab] = useState<PanelTab>("chat");
   const [draft, setDraft] = useState("");
   const [unread, setUnread] = useState(0);
 
@@ -205,9 +209,11 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
 
   const refreshNotes = useCallback(() => void mutateNotes(), [mutateNotes]);
 
-  const live = useRef({ chatOpen, roomVisible, meId });
+  /** the chat itself is on screen (panel open on its Chat tab, room not minimized) */
+  const readingChat = chatOpen && panelTab === "chat" && roomVisible;
+  const live = useRef({ readingChat, meId });
   useEffect(() => {
-    live.current = { chatOpen, roomVisible, meId };
+    live.current = { readingChat, meId };
   });
   const onRoomEvent = useCallback(
     (e: AppRoomEvent) => {
@@ -220,8 +226,8 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       }
       if (e.type !== "chat") return;
       mutateChat((prev) => appendChat(prev ?? [], e.payload.hourStart, e.payload.message), { revalidate: false });
-      const { chatOpen: open, roomVisible: visible, meId: me } = live.current;
-      if (e.payload.message.userId !== me && !(open && visible)) setUnread((n) => n + 1);
+      const { readingChat: reading, meId: me } = live.current;
+      if (e.payload.message.userId !== me && !reading) setUnread((n) => n + 1);
     },
     [mutateChat, mutateNotes],
   );
@@ -389,8 +395,8 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
   // Reading chat in the open room clears the badge.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from route + panel state
-    if (chatOpen && roomVisible) setUnread(0);
-  }, [chatOpen, roomVisible, hours]);
+    if (readingChat) setUnread(0);
+  }, [readingChat, hours]);
 
   // ---- public actions ----
   const enter = useCallback((name: string) => {
@@ -399,6 +405,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
     // Switching rooms: the old connection is torn down by the effect cleanup; joining the new group moves presence.
     if (current && !sameRoom(current.name, name)) {
       setChatOpen(false);
+      setPanelTab("chat");
       setUnread(0);
     }
     setTarget((t) => ({ name, attempt: (t?.attempt ?? 0) + 1 }));
@@ -413,6 +420,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
     setTarget(null);
     setSession(null);
     setChatOpen(false);
+    setPanelTab("chat");
     setUnread(0);
     setDraft("");
     await refreshGraph(mutate);
@@ -433,7 +441,6 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       if (!r || sessionRef.current?.status !== "live") return void toast("Connecting voice…");
       try {
         await r.localParticipant.setMicrophoneEnabled(!voice.micOn);
-        setVoice((v) => ({ ...v, micJoined: true }));
         syncFromRoom(r);
       } catch (e) {
         toast.error("Couldn't use your microphone", { description: mediaErrorMessage(e, "microphone") });
@@ -493,7 +500,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
         localMic.current = null;
         setVoice((v) => ({ ...v, micOn: false, speaking: new Set(), micStates: new Map([[meId, false]]) }));
       });
-      setVoice((v) => ({ ...v, micOn: true, micJoined: true, micStates: new Map([[meId, true]]) }));
+      setVoice((v) => ({ ...v, micOn: true, micStates: new Map([[meId, true]]) }));
       toast("Local preview only", { description: "Add LiveKit keys to talk with others in the room." });
     } catch (e) {
       toast.error("Couldn't use your microphone", { description: mediaErrorMessage(e, "microphone") });
@@ -574,6 +581,8 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       unread,
       chatOpen,
       setChatOpen,
+      panelTab,
+      setPanelTab,
       draft,
       setDraft,
       notes,
@@ -599,6 +608,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       sendChat,
       unread,
       chatOpen,
+      panelTab,
       draft,
       notes,
       saveNotes,

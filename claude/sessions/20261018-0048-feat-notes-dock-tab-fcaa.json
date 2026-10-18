@@ -1,0 +1,43 @@
+{
+  "id": "20261018-0048-feat-notes-dock-tab-fcaa",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "feat/notes-dock-tab",
+  "base": "e744b50",
+  "worktree": "/Users/home/Desktop/repositories/oraclehackathon26/momo-group-tweaks",
+  "started": "2026-10-18T05:48:47.473Z",
+  "ended": "2026-10-18T05:53:07.000Z",
+  "status": "done",
+  "goal": "Notes get their own dock button; chat and notes share one side panel with tabs",
+  "summary": "Notes moved out of the chat composer into its own dock button (Chat, Notes, Mic, Share, Leave). Both open the same side panel, which has Chat | Notes tabs across the top. The tab lives in RoomConnection (panelTab, next to chatOpen), so the dock, the tabs and minimize all agree; a dock button toggles the panel when it already shows its tab and switches tabs otherwise. Chat unread clears only while the Chat tab is actually on screen. The summarize button shows on the Chat tab, download on the Notes tab; the composer is Chat-only. The AI-listening dot shows on the Notes dock button and the Notes tab. Dock buttons are 60px wide on phones so five fit at 375px.",
+  "claims": [
+    "components/room/RoomConnection.tsx",
+    "components/room/ChatPanel.tsx",
+    "components/room/RoomDock.tsx",
+    "components/room/RoomView.tsx"
+  ],
+  "files_touched": [
+    "components/room/RoomConnection.tsx",
+    "components/room/ChatPanel.tsx",
+    "components/room/RoomDock.tsx",
+    "components/room/RoomView.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    "Kept the ChatPanel component/file name to keep the diff small; it is now the shared Chat/Notes panel.",
+    "Unread counts messages arriving while the Notes tab is showing, since the chat isn't visible then."
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass (eslint components/room)",
+    "build": "not run",
+    "manual": "In-memory clone on :3117: dock Notes opened the panel on Notes; the Chat tab switched to chat and focused the composer; sent a message; dock Chat closed the panel; five dock buttons fit at 375px. :3000 (this worktree, shared DB) serves the room page with 200 after hot reload; not clicked through there to avoid creating a test user in the shared DB."
+  },
+  "next_steps": [],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": []
+}

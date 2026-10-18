@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import oracledb from "oracledb";
 
-const TABLES = ["friendships", "group_notes", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
+const TABLES = ["direct_chats", "moderation_reports", "email_codes", "friendships", "group_notes", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
 
 /**
  * Additive changes for databases created from an older schema.sql.
@@ -23,6 +23,35 @@ const UPGRADES = [
      created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
      updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
      expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+   )`,
+  `ALTER TABLE users ADD (email VARCHAR2(254))`,
+  `CREATE TABLE email_codes (
+     code_key    VARCHAR2(300) PRIMARY KEY,
+     code_hash   VARCHAR2(64) NOT NULL,
+     attempts    NUMBER DEFAULT 0 NOT NULL,
+     expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+   )`,
+  `CREATE TABLE moderation_reports (
+     id          VARCHAR2(36) PRIMARY KEY,
+     report_key  VARCHAR2(64) NOT NULL UNIQUE,
+     category    VARCHAR2(10) NOT NULL CHECK (category IN ('chat', 'note', 'username', 'group')),
+     severity    VARCHAR2(6) NOT NULL CHECK (severity IN ('low', 'medium', 'high')),
+     summary     VARCHAR2(200 CHAR) NOT NULL,
+     reason      VARCHAR2(600 CHAR),
+     excerpt     VARCHAR2(1000 CHAR),
+     user_id     VARCHAR2(36),
+     user_name   VARCHAR2(80 CHAR),
+     group_name  VARCHAR2(60 CHAR),
+     item_at     TIMESTAMP WITH TIME ZONE,
+     created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+   )`,
+  `CREATE TABLE direct_chats (
+     chat_key    VARCHAR2(80) PRIMARY KEY,
+     user_a      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     user_b      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     messages    JSON NOT NULL,
+     created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
    )`,
 ];
 

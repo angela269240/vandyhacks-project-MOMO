@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import oracledb from "oracledb";
 import { query, withConnection } from "../db";
+import { DM_TTL_MS, dmCutoff, dmKey, pruneDm } from "../dm";
 import { joinNotes, notesExpiry } from "../notes";
-import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, Interest, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, Interest, Report, ReportCategory, ReportSeverity, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
@@ -31,11 +33,27 @@ type GroupRow = {
 
 type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string };
 
+type DmRow = { CHAT_KEY: string; MESSAGES: ChatMessage[] | string };
+
 type NotesRow = { CONTENT: string | null; VERSION: number; CREATED_AT: Date; UPDATED_AT: Date; EXPIRES_AT: Date };
 
 const NOTES_SELECT = `SELECT content, version, created_at, updated_at, expires_at FROM group_notes WHERE group_id = :g AND expires_at > :now`;
 /** ORA-00001: another request created the same room's notes row first. */
 const isDuplicate = (e: unknown) => String(e).includes("ORA-00001");
+
+type ReportRow = {
+  ID: string;
+  CATEGORY: ReportCategory;
+  SEVERITY: ReportSeverity;
+  SUMMARY: string;
+  REASON: string | null;
+  EXCERPT: string | null;
+  USER_ID: string | null;
+  USER_NAME: string | null;
+  GROUP_NAME: string | null;
+  ITEM_AT: Date | null;
+  CREATED_AT: Date;
+};
 
 const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 
@@ -136,6 +154,8 @@ async function writeNotes(
   }
 }
 
+const dmMessages = (r: DmRow) => (typeof r.MESSAGES === "string" ? (JSON.parse(r.MESSAGES) as ChatMessage[]) : r.MESSAGES);
+
 function toChatHour(r: ChatRow): ChatHour {
   const messages = typeof r.MESSAGES === "string" ? (JSON.parse(r.MESSAGES) as ChatMessage[]) : r.MESSAGES;
   return { hourStart: iso(r.HOUR_START)!, messages };
@@ -169,12 +189,12 @@ export const oracleStore: Store = {
     return rows.map((r): Interest => ({ id: r.ID, name: r.NAME, color: r.COLOR }));
   },
 
-  async createUser(input, id, deviceKeyHash) {
+  async createUser(input, id, deviceKeyHash, email) {
     await withConnection(async (conn) => {
       await conn.execute(
-        `INSERT INTO users (id, device_key_hash, name, linkedin, bio, avatar_url)
-         VALUES (:id, :hash, :name, :linkedin, :bio, :avatar)`,
-        { id, hash: deviceKeyHash, name: input.name, linkedin: input.linkedin, bio: input.bio, avatar: input.avatarUrl ?? null },
+        `INSERT INTO users (id, device_key_hash, name, linkedin, bio, avatar_url, email)
+         VALUES (:id, :hash, :name, :linkedin, :bio, :avatar, :email)`,
+        { id, hash: deviceKeyHash, name: input.name, linkedin: input.linkedin, bio: input.bio, avatar: input.avatarUrl ?? null, email },
       );
       await setInterests(conn, id, input.interestIds);
       await conn.commit();
@@ -409,6 +429,177 @@ export const oracleStore: Store = {
       expired.push({ group, chat }); // group_notes goes with it (ON DELETE CASCADE)
     }
     return expired;
+  },
+
+  async saveEmailCode(key, codeHash, expiresAt) {
+    await withConnection(async (conn) => {
+      await conn.execute(
+        `MERGE INTO email_codes t USING (SELECT :k AS k FROM dual) s ON (t.code_key = s.k)
+          WHEN MATCHED THEN UPDATE SET t.code_hash = :h, t.attempts = 0, t.expires_at = :exp
+          WHEN NOT MATCHED THEN INSERT (code_key, code_hash, expires_at) VALUES (s.k, :h, :exp)`,
+        { k: key, h: codeHash, exp: expiresAt },
+      );
+      await conn.commit();
+    });
+  },
+
+  async checkEmailCode(key, codeHash, now, maxAttempts) {
+    return withConnection(async (conn) => {
+      const res = await conn.execute<{ CODE_HASH: string; ATTEMPTS: number; EXPIRES_AT: Date }>(
+        `SELECT code_hash, attempts, expires_at FROM email_codes WHERE code_key = :k FOR UPDATE`,
+        { k: key },
+      );
+      const row = res.rows?.[0];
+      const remove = () => conn.execute(`DELETE FROM email_codes WHERE code_key = :k`, { k: key });
+      let result: "ok" | "wrong" | "missing";
+      if (!row || new Date(row.EXPIRES_AT) <= now) {
+        if (row) await remove();
+        result = "missing";
+      } else if (row.CODE_HASH === codeHash) {
+        await remove();
+        result = "ok";
+      } else {
+        if (row.ATTEMPTS + 1 >= maxAttempts) await remove();
+        else await conn.execute(`UPDATE email_codes SET attempts = attempts + 1 WHERE code_key = :k`, { k: key });
+        result = "wrong";
+      }
+      await conn.commit();
+      return result;
+    });
+  },
+
+  async addReports(reports, now) {
+    // One row per key (the model can flag the same item twice); MERGE skips keys reported on earlier days.
+    const unique = [...new Map(reports.map((r) => [r.key, r])).values()];
+    if (!unique.length) return 0;
+    return withConnection(async (conn) => {
+      const res = await conn.executeMany(
+        `MERGE INTO moderation_reports t USING (SELECT :k AS k FROM dual) s ON (t.report_key = s.k)
+          WHEN NOT MATCHED THEN INSERT
+            (id, report_key, category, severity, summary, reason, excerpt, user_id, user_name, group_name, item_at, created_at)
+          VALUES (:id, s.k, :category, :severity, :summary, :reason, :excerpt, :userId, :userName, :groupName, :itemAt, :now)`,
+        unique.map((r) => ({
+          id: randomUUID(),
+          k: r.key,
+          category: r.category,
+          severity: r.severity,
+          summary: r.summary,
+          reason: r.reason,
+          excerpt: r.excerpt,
+          userId: r.userId,
+          userName: r.userName,
+          groupName: r.groupName,
+          itemAt: r.itemAt ? new Date(r.itemAt) : null,
+          now,
+        })),
+        {
+          bindDefs: {
+            k: { type: oracledb.STRING, maxSize: 64 },
+            id: { type: oracledb.STRING, maxSize: 36 },
+            category: { type: oracledb.STRING, maxSize: 10 },
+            severity: { type: oracledb.STRING, maxSize: 6 },
+            summary: { type: oracledb.STRING, maxSize: 800 },
+            reason: { type: oracledb.STRING, maxSize: 2400 },
+            excerpt: { type: oracledb.STRING, maxSize: 4000 },
+            userId: { type: oracledb.STRING, maxSize: 36 },
+            userName: { type: oracledb.STRING, maxSize: 320 },
+            groupName: { type: oracledb.STRING, maxSize: 240 },
+            itemAt: { type: oracledb.DB_TYPE_TIMESTAMP_TZ },
+            now: { type: oracledb.DB_TYPE_TIMESTAMP_TZ },
+          },
+        },
+      );
+      await conn.commit();
+      return res.rowsAffected ?? 0;
+    });
+  },
+
+  async listReports(limit) {
+    const rows = await query<ReportRow>(
+      `SELECT id, category, severity, summary, reason, excerpt, user_id, user_name, group_name, item_at, created_at
+         FROM moderation_reports ORDER BY created_at DESC FETCH FIRST :n ROWS ONLY`,
+      { n: limit },
+    );
+    return rows.map(
+      (r): Report => ({
+        id: r.ID,
+        category: r.CATEGORY,
+        severity: r.SEVERITY,
+        summary: r.SUMMARY,
+        reason: r.REASON ?? "",
+        excerpt: r.EXCERPT ?? "",
+        userId: r.USER_ID,
+        userName: r.USER_NAME,
+        groupName: r.GROUP_NAME,
+        itemAt: iso(r.ITEM_AT),
+        createdAt: iso(r.CREATED_AT)!,
+      }),
+    );
+  },
+
+  async getDirectChat(a, b, now) {
+    const key = dmKey(a, b);
+    const rows = await query<DmRow>(`SELECT chat_key, JSON_SERIALIZE(messages) AS messages FROM direct_chats WHERE chat_key = :k`, { k: key });
+    return { key, messages: rows[0] ? pruneDm(dmMessages(rows[0]), now) : [] };
+  },
+
+  /** Read-modify-write under a row lock so pruning and appends from both sides serialize. */
+  async appendDirectChat(a, b, message, now) {
+    const key = dmKey(a, b);
+    const [x, y] = a < b ? [a, b] : [b, a];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await withConnection(async (conn) => {
+          const res = await conn.execute<DmRow>(
+            `SELECT chat_key, JSON_SERIALIZE(messages) AS messages FROM direct_chats WHERE chat_key = :k FOR UPDATE`,
+            { k: key },
+          );
+          const current = res.rows?.[0];
+          const messages = JSON.stringify(pruneDm([...(current ? dmMessages(current) : []), message], now));
+          if (current) {
+            await conn.execute(`UPDATE direct_chats SET messages = JSON(:m), updated_at = :now WHERE chat_key = :k`, {
+              k: key,
+              m: { val: messages, type: oracledb.CLOB },
+              now,
+            });
+          } else {
+            await conn.execute(
+              `INSERT INTO direct_chats (chat_key, user_a, user_b, messages, created_at, updated_at)
+               VALUES (:k, :a, :b, JSON(:m), :now, :now)`,
+              { k: key, a: x, b: y, m: { val: messages, type: oracledb.CLOB }, now },
+            );
+          }
+          await conn.commit();
+        });
+      } catch (e) {
+        // Both sides sent the first message at once: retry once and append to the winner's row.
+        if (attempt === 0 && isDuplicate(e)) continue;
+        throw e;
+      }
+    }
+  },
+
+  async expireDirectChats(now) {
+    return withConnection(async (conn) => {
+      // Quiet for 60 days: every message is past the window.
+      const res = await conn.execute(`DELETE FROM direct_chats WHERE updated_at <= :cut`, {
+        cut: new Date(now.getTime() - DM_TTL_MS),
+      });
+      // Still active, but the oldest message (first, since they're appended in order) is past the window.
+      const stale = await conn.execute<DmRow>(
+        `SELECT chat_key, JSON_SERIALIZE(messages) AS messages FROM direct_chats
+          WHERE JSON_VALUE(messages, '$[0].ts') <= :cut FOR UPDATE`,
+        { cut: dmCutoff(now) },
+      );
+      for (const row of stale.rows ?? []) {
+        await conn.execute(`UPDATE direct_chats SET messages = JSON(:m) WHERE chat_key = :k`, {
+          k: row.CHAT_KEY,
+          m: { val: JSON.stringify(pruneDm(dmMessages(row), now)), type: oracledb.CLOB },
+        });
+      }
+      await conn.commit();
+      return res.rowsAffected ?? 0;
+    });
   },
 
   async getFriendState(userId) {

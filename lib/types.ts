@@ -46,6 +46,9 @@ export type ChatMessage = { id?: string; ts: string; userId: string; text: strin
 
 export type ChatHour = { hourStart: string; messages: ChatMessage[] };
 
+/** A one-to-one chat. `key` is the unique key it's stored under (lib/dm.ts dmKey); messages oldest first. */
+export type DirectChat = { key: string; messages: ChatMessage[] };
+
 export type FriendState = { friends: string[]; incoming: string[]; outgoing: string[] };
 
 export type ProfileInput = {
@@ -65,7 +68,9 @@ export type LobbyEvent =
   | { type: "group_created"; payload: { groupId: number } }
   | { type: "group_expired"; payload: { groupId: number } }
   | { type: "friend_requested"; payload: { from: string; to: string } }
-  | { type: "friend_accepted"; payload: { a: string; b: string } };
+  | { type: "friend_accepted"; payload: { a: string; b: string } }
+  // the text stays out of the lobby (everyone listens there); the recipient fetches it
+  | { type: "dm"; payload: { from: string; to: string } };
 
 /**
  * A room's shared notes file. AI notetaking puts scheduled events at the top and topic facts at the bottom,
@@ -77,3 +82,29 @@ export type GroupNotes = { content: string; version: number; createdAt: string; 
 export type RoomEvent =
   | { type: "chat"; payload: { hourStart: string; message: ChatMessage } }
   | { type: "notes"; payload: { version: number } };
+
+/** What a moderation report is about: one of the four kinds of text the daily review reads. */
+export type ReportCategory = "chat" | "note" | "username" | "group";
+
+export type ReportSeverity = "low" | "medium" | "high";
+
+/** One flagged item from the daily AI moderation review (lib/moderation). Only admins see these. */
+export type Report = {
+  id: string;
+  category: ReportCategory;
+  severity: ReportSeverity;
+  /** one line for the list */
+  summary: string;
+  /** why the moderator flagged it */
+  reason: string;
+  /** the flagged text itself */
+  excerpt: string;
+  /** who wrote it (chat), who it names (username) or who made it (group); null when unknown */
+  userId: string | null;
+  userName: string | null;
+  /** the room it lives in, for the link; the user's current room for a username */
+  groupName: string | null;
+  /** when the flagged item was written, if known */
+  itemAt: string | null;
+  createdAt: string;
+};
