@@ -52,3 +52,21 @@ test("without labels the layout is unchanged in spirit: tight but non-overlappin
     assert.ok(Math.hypot(pa.x - pb.x, pa.y - pb.y) >= 2 * r);
   }
 });
+
+test("focused bubbles form square bounds even when their labels have different widths", () => {
+  const ids = Array.from({ length: 12 }, (_, i) => i + 1);
+  const sizes = new Map(ids.map((id) => [id, 1 + ((id * 7) % 9)]));
+  const labels = new Map<number, LabelBox>(ids.map((id) => [id, { w: 180 + (id % 4) * 95, h: 70 }]));
+  const L = computeLayout(ids, [], 1, sizes, 0.55, [], labels);
+  const prints = ids.map((id) => {
+    const p = L.anchors.get(id)!;
+    const r = clusterRadius(sizes.get(id)!);
+    return { p, r };
+  });
+  const x0 = Math.min(...prints.map(({ p, r }) => p.x - r));
+  const x1 = Math.max(...prints.map(({ p, r }) => p.x + r));
+  const y0 = Math.min(...prints.map(({ p, r }) => p.y - r));
+  const y1 = Math.max(...prints.map(({ p, r }) => p.y + r));
+
+  assert.ok(Math.abs(x1 - x0 - (y1 - y0)) < 0.01, `layout is ${x1 - x0} × ${y1 - y0}`);
+});
