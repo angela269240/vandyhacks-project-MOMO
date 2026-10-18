@@ -1,0 +1,44 @@
+{
+  "id": "20261018-0439-nobell-dev-fdf8",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "46297d3",
+  "started": "2026-10-18T09:39:18.232Z",
+  "ended": "2026-10-18T10:05:00Z",
+  "status": "done",
+  "goal": "Map nodes: outline = bubble color, fill = personal color",
+  "summary": "Map nodes are two-tone: the fill is the person's own color and a ring inside the disc's edge is the bubble they're shown in. Only nodeCanvasObject in components/map/SocialGraph.tsx changed (plus a NODE_RING constant and the interestHue import). Ring color = n.color (the existing per-frame bubble tone: group hue while inside the bubble outline, stone/gray outside, crossfades unchanged). Fill = the user's identity color (palette hex of interestHue(first interest), stone with no interests) because no user-chosen color is stored anywhere yet. Ring width = clamp(r*0.25, >= 2.5px on screen, <= 40% of r), drawn inside the radius so node size is unchanged; avatar photos now clip inside the ring (was r*0.92) so they don't cover it. Paper rim, shadow, me-rings, search/ringed halos, labels and sizes are untouched.",
+  "claims": [
+    "components/map/SocialGraph.tsx"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Fill uses identityColor's hue (first interest) as the personal color",
+      "why": "There is no user-defined color in the schema, API or profile form; the brief says to use the existing default user color in that case and not add backend changes."
+    },
+    {
+      "what": "Ring has a minimum on-screen width",
+      "why": "At r*0.22 alone it was ~1px on small (friendship-distance-scaled) circles and the bubble color wasn't noticeable."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "In-memory demo of this commit: ML Paper Club members show a rose ring with ochre centers; Maya (green center) inside ML had the same rose ring; after joining Late Night Chess her ring turned ochre and her center stayed green; no-interest users: none exist (sign-up requires 3) but code falls back to stone. Clicking a node still opens the profile card; no window errors."
+  },
+  "next_steps": [],
+  "open_questions": [
+    "To let people actually pick their color: add users.color (VARCHAR2(9) or a hue key) to schema.sql + migrate --upgrade, both stores, the profile patch schema and a picker in ProfileForm; then read it in place of the first-interest hue in nodeCanvasObject (one line)."
+  ],
+  "blockers": [],
+  "conflict_notes": []
+}
