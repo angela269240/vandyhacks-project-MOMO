@@ -1,0 +1,45 @@
+{
+  "id": "20261018-0156-nobell-dev-c480",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "888cf56",
+  "started": "2026-10-18T06:56:57.133Z",
+  "ended": "2026-10-18T07:03:36.742Z",
+  "status": "done",
+  "goal": "Size map nodes by friendship distance: friends 75%, friends of friends 50%, everyone else 25% of your circle area",
+  "summary": "Map circles are sized relative to your own (NODE_R * ME_SCALE 1.3) by friendship distance, by area: friends 75%, friends of friends 50%, everyone else 25% (radius = sqrt of the share). SocialGraph computes degreeOf from the graph edges after every graph sync and when meId changes; sizeFactor() replaces the old isMe ? 1.3 : 1 in drawing, both hit tests and roomSnapshot. Signed out (no meId), everyone stays at 1x. RoomStage now sizes each person from the map snapshot (sizeOf map) instead of one shared size, so the room zoom still lines up circle-for-circle.",
+  "claims": [
+    "components/map/SocialGraph.tsx",
+    "components/room/RoomStage.tsx"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx",
+    "components/room/RoomStage.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    "Percentages are of area, as asked, so radii are sqrt(0.75)=0.87, sqrt(0.5)=0.71 and 0.5 of your circle.",
+    "Collision spacing, bubble sizes, labels and everything else are unchanged; only the drawn and hit-test radius changes.",
+    "RoomStage: previously took one size from the first person on stage; with mixed sizes that would make the room depend on an arbitrary person, so each member now gets their own map radius.",
+    "Earlier uncommitted panning/blob work was moved off nobell/dev into a git stash at the human request (stash message: nobell: bounded panning + liquid blobs + stretch (kept off nobell/dev))."
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "Test copy on the in-memory world (port 3005), measured through the map API: with one accepted friend, the friend is 0.75, 15 friends of friends 0.50 and 55 others 0.25 of my circle area, exactly; it updated live on accepting the request. Room sizing not checked by eye. Human viewed the demo and asked to integrate it."
+  },
+  "next_steps": [
+    "Open a PR from nobell/dev to main.",
+    "The panning/blob work is in git stash; restore it with git stash pop only if wanted."
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": [
+    "Branch color (paused) claims components/map/** and components/room/**; this touches only node radius sites in SocialGraph.tsx and the member radius in RoomStage.tsx."
+  ]
+}

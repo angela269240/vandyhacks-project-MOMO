@@ -2,28 +2,46 @@
 
 import { SWRConfig, useSWRConfig } from "swr";
 import { toast } from "sonner";
+import { DirectChatWindow } from "@/components/dm/DirectChatWindow";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { refreshGraph } from "@/hooks/useGraph";
+import { dmPath, DmProvider, useDm } from "@/hooks/useDm";
+import { GRAPH_KEY, refreshGraph } from "@/hooks/useGraph";
 import { MeProvider, useMe } from "@/hooks/useMe";
 import { useLobby } from "@/hooks/useRealtime";
 import { useTheme } from "@/hooks/useTheme";
 import { sceneEvents } from "@/lib/client/scene";
-import type { LobbyEvent } from "@/lib/types";
+import type { Graph, LobbyEvent } from "@/lib/types";
 
-/** Applies lobby events: refresh the map, refresh my friend state, toast requests addressed to me. */
+/**
+ * Applies lobby events: refresh the map, refresh my friend state, toast requests addressed to me, and refresh
+ * direct chats I'm in (with a toast to open one that isn't on screen).
+ */
 function LobbyListener() {
   const { signedIn } = useMe();
   return signedIn ? <SignedInLobbyListener /> : null;
 }
 
 function SignedInLobbyListener() {
-  const { mutate } = useSWRConfig();
+  const { mutate, cache } = useSWRConfig();
   const { identity, refreshFriends } = useMe();
+  const { peerId, openChat } = useDm();
 
   useLobby<LobbyEvent>((event) => {
-    refreshGraph(mutate);
     const me = identity?.userId;
+    if (event.type === "dm") {
+      const { from, to } = event.payload;
+      if (from === me) mutate(dmPath(to));
+      if (to !== me) return;
+      mutate(dmPath(from));
+      if (peerId !== from) {
+        const graph = cache.get(GRAPH_KEY)?.data as Graph | undefined;
+        const name = graph?.users.find((u) => u.id === from)?.name ?? "Someone";
+        toast(`New message from ${name}`, { action: { label: "Open", onClick: () => openChat(from) } });
+      }
+      return;
+    }
+    refreshGraph(mutate);
     switch (event.type) {
       case "user_moved":
         sceneEvents.emit("pulse-group", event.payload.groupId);
@@ -51,11 +69,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig value={{ revalidateOnFocus: true, shouldRetryOnError: false }}>
       <MeProvider>
-        <TooltipProvider delay={250}>
-          <LobbyListener />
-          {children}
-          <ThemedToaster />
-        </TooltipProvider>
+        <DmProvider>
+          <TooltipProvider delay={250}>
+            <LobbyListener />
+            {children}
+            <DirectChatWindow />
+            <ThemedToaster />
+          </TooltipProvider>
+        </DmProvider>
       </MeProvider>
     </SWRConfig>
   );

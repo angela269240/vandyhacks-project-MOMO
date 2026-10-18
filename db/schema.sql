@@ -105,3 +105,14 @@ CREATE TABLE moderation_reports (
   created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 )
 /
+-- One-to-one chats (lib/dm.ts). chat_key is both user ids sorted and joined with ':', so each pair has exactly one row.
+-- messages is a JSON array, oldest first; messages older than 60 days are dropped and empty chats deleted.
+CREATE TABLE direct_chats (
+  chat_key    VARCHAR2(80) PRIMARY KEY,
+  user_a      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_b      VARCHAR2(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  messages    JSON NOT NULL,
+  created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+  updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+)
+/

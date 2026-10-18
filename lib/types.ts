@@ -46,6 +46,9 @@ export type ChatMessage = { id?: string; ts: string; userId: string; text: strin
 
 export type ChatHour = { hourStart: string; messages: ChatMessage[] };
 
+/** A one-to-one chat. `key` is the unique key it's stored under (lib/dm.ts dmKey); messages oldest first. */
+export type DirectChat = { key: string; messages: ChatMessage[] };
+
 export type FriendState = { friends: string[]; incoming: string[]; outgoing: string[] };
 
 export type ProfileInput = {
@@ -65,7 +68,9 @@ export type LobbyEvent =
   | { type: "group_created"; payload: { groupId: number } }
   | { type: "group_expired"; payload: { groupId: number } }
   | { type: "friend_requested"; payload: { from: string; to: string } }
-  | { type: "friend_accepted"; payload: { a: string; b: string } };
+  | { type: "friend_accepted"; payload: { a: string; b: string } }
+  // the text stays out of the lobby (everyone listens there); the recipient fetches it
+  | { type: "dm"; payload: { from: string; to: string } };
 
 /**
  * A room's shared notes file. AI notetaking puts scheduled events at the top and topic facts at the bottom,
