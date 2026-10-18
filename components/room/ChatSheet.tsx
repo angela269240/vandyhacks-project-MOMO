@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/client/api";
-import { INTERESTS } from "@/lib/interests";
+import { identityColor } from "@/lib/colors";
 import type { ChatHour, GraphUser } from "@/lib/types";
 import { Avatar } from "../profile/Avatar";
 
@@ -59,7 +59,7 @@ export function ChatSheet({
       <SheetContent className="w-full gap-0 p-0 sm:max-w-md" data-scroll-region>
         <SheetHeader className="border-b border-foreground/10 p-4">
           <SheetTitle className="flex items-center gap-2 font-heading">
-            <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
+            <span className="size-2.5 rounded-full" style={{ background: color }} />
             {groupName}
           </SheetTitle>
           <SheetDescription>Chat is kept by the hour.</SheetDescription>
@@ -79,7 +79,7 @@ export function ChatSheet({
               <ul className="flex flex-col gap-2.5">
                 {h.messages.map((m) => {
                   const who = people.get(m.userId);
-                  const c = INTERESTS.find((i) => i.id === who?.interestIds[0])?.color ?? "#60A5FA";
+                  const c = identityColor(who ?? { interestIds: [] });
                   return (
                     <li key={`${m.ts}-${m.userId}`} className="flex gap-2.5">
                       <Avatar name={who?.name ?? "?"} url={who?.avatarUrl} color={c} size={28} className="mt-0.5" />

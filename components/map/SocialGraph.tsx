@@ -5,15 +5,32 @@ import { polygonCentroid, polygonContains, polygonHull } from "d3-polygon";
 import { curveCatmullRomClosed, line } from "d3-shape";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-force-graph-2d";
-import { initials, rgba } from "@/lib/colors";
-import { INTERESTS } from "@/lib/interests";
+import { HUES, initials, mixHex, rgba, type ToneKey } from "@/lib/colors";
+import { assignGroupHues, groupHue, groupHues } from "@/lib/client/groupHues";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import type { Graph, GraphGroup, GraphUser } from "@/lib/types";
 import { bob, computeLayout, ringPoint, type Layout } from "./layout";
 
+/** A palette key plus where it's fading in from, so a change of bubble crossfades instead of snapping. */
+type Tone = { key: ToneKey; from: ToneKey; at: number };
+
+/** Theme colors the canvas needs, read from CSS variables whenever the theme flips. */
+type Palette = {
+  hue: Record<ToneKey, string>;
+  ink: string;
+  inkMuted: string;
+  link: string;
+  nodeInk: string;
+  nodeEdge: string;
+  shadow: string;
+};
+
 type NodeData = {
   id: string;
   user: GraphUser;
+  /** display color: the hue of the bubble this person is shown in (stone when in none) */
+  tone: Tone;
+  /** resolved color for the current frame */
   color: string;
   phase: number;
   bornAt: number;
@@ -64,11 +81,52 @@ const UNFOCUSED_SCALE = 0.55;
 const BLOB_PAD = 60;
 const ARRIVED = 230; // members farther than this from their anchor are still travelling
 const DOUBLE_CLICK_MS = 260;
-const INTEREST_COLOR = new Map(INTERESTS.map((i) => [i.id, i.color]));
+const TONE_FADE_MS = 700;
+/**
+ * Edge opacity, per theme. Edges inside a bubble stay faint so dense groups don't turn into dark mats;
+ * edges between bubbles (or to people outside any) stay a little stronger since they show cross-community ties.
+ * Dark values give each line about the same contrast on charcoal as the light value has on cream
+ * (pale lines on charcoal read stronger than dark lines on cream, so the numbers are lower).
+ */
+const EDGE_ALPHA = {
+  light: { intra: 0.12, inter: 0.18, highlight: 0.75, faded: 0.04 },
+  dark: { intra: 0.075, inter: 0.11, highlight: 0.5, faded: 0.025 },
+} as const;
+const TONE_KEYS: ToneKey[] = [...HUES.map((h) => h.key), "stone"];
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeOutBack = (p: number) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
 const smoothPath = line<Pt>().curve(curveCatmullRomClosed.alpha(0.6));
+
+function readPalette(): Palette {
+  const css = getComputedStyle(document.documentElement);
+  // Round-trip through a canvas so any CSS color form (#fff, named, rgb()) comes back as #rrggbb.
+  const probe = document.createElement("canvas").getContext("2d")!;
+  const v = (name: string) => {
+    probe.fillStyle = "#000000";
+    probe.fillStyle = css.getPropertyValue(name).trim() || "#9a9288";
+    return probe.fillStyle;
+  };
+  return {
+    hue: Object.fromEntries(TONE_KEYS.map((k) => [k, v(`--hue-${k}`)])) as Record<ToneKey, string>,
+    ink: v("--map-ink"),
+    inkMuted: v("--map-ink-muted"),
+    link: v("--map-link"),
+    nodeInk: v("--map-node-ink"),
+    nodeEdge: v("--map-node-edge"),
+    shadow: v("--map-shadow"),
+  };
+}
+
+/** Point a tone at a new key, starting a crossfade from whatever is showing now. */
+function retarget(tone: Tone, key: ToneKey, t: number) {
+  if (tone.key === key) return;
+  tone.from = clamp01((t - tone.at) / TONE_FADE_MS) < 0.5 ? tone.from : tone.key;
+  tone.key = key;
+  tone.at = t;
+}
+const resolve = (tone: Tone, pal: Palette, t: number) =>
+  mixHex(pal.hue[tone.from], pal.hue[tone.key], clamp01((t - tone.at) / TONE_FADE_MS));
 
 export default function SocialGraph(props: Props) {
   const fgRef = useRef<ForceGraphMethods<NodeObject<NodeData>> | undefined>(undefined);
@@ -108,9 +166,11 @@ export default function SocialGraph(props: Props) {
   const scrubBase = useRef<number | null>(null);
   const motionOK = useRef(true);
   const fonts = useRef({ sans: "sans-serif", heading: "sans-serif" });
+  const groupTones = useRef(new Map<number, Tone>());
   const frame = useRef({
     t: 0,
     light: false,
+    pal: null as Palette | null,
     highlight: null as Set<string> | null,
     vivid: null as Set<string> | null,
     ringed: null as Set<string> | null,
@@ -122,6 +182,12 @@ export default function SocialGraph(props: Props) {
     return !v || v.has(n.id);
   };
   const isFocused = (n: NodeData) => n.user.groupId === null || propsRef.current.focusedGroupIds.has(n.user.groupId);
+  /** A node wears the hue of the bubble it's displayed in; identity, interests and friendships are untouched. */
+  const toneFor = (u: GraphUser): ToneKey => {
+    if (u.groupId === null) return "stone";
+    const g = groups.current.get(u.groupId);
+    return g ? groupHue(g) : "stone";
+  };
 
   const targetFor = useCallback((n: NodeData) => {
     const L = layout.current;
@@ -260,10 +326,17 @@ export default function SocialGraph(props: Props) {
     const seen = new Set<string>();
     for (const u of graph.users) {
       seen.add(u.id);
-      const color = INTEREST_COLOR.get(u.interestIds[0]) ?? "#60A5FA";
       const existing = nodes.get(u.id);
       if (!existing) {
-        const node: NodeData = { id: u.id, user: u, color, phase: Math.random() * Math.PI * 2, bornAt: initial ? 0 : now };
+        const key = toneFor(u);
+        const node: NodeData = {
+          id: u.id,
+          user: u,
+          tone: { key, from: key, at: 0 },
+          color: "",
+          phase: Math.random() * Math.PI * 2,
+          bornAt: initial ? 0 : now,
+        };
         const t = targetFor(node);
         node.x = t.x + (Math.random() - 0.5) * 80;
         node.y = t.y + (Math.random() - 0.5) * 80;
@@ -276,7 +349,6 @@ export default function SocialGraph(props: Props) {
           existing.fx = existing.fy = undefined;
         }
         existing.user = u;
-        existing.color = color;
       }
     }
     for (const id of [...nodes.keys()]) {
@@ -335,7 +407,24 @@ export default function SocialGraph(props: Props) {
       const t = performance.now();
       const f = frame.current;
       f.t = t;
-      f.light = document.documentElement.classList.contains("light");
+      const light = document.documentElement.classList.contains("light");
+      if (!f.pal || light !== f.light) f.pal = readPalette();
+      f.light = light;
+      const pal = f.pal;
+
+      // Resolve this frame's colors: bubbles from the shared assignment, people from the bubble they're shown in.
+      const hues = groupHues.get();
+      for (const g of groups.current.values()) {
+        const key = groupHue(g, hues);
+        const tone = groupTones.current.get(g.id);
+        if (!tone) groupTones.current.set(g.id, { key, from: key, at: 0 });
+        else retarget(tone, key, t);
+      }
+      for (const n of nodes.values()) {
+        retarget(n.tone, toneFor(n.user), t);
+        n.color = resolve(n.tone, pal, t);
+      }
+
       const { meId, friendIds, selectedId, roomGroupId } = propsRef.current;
       const friends = new Set(friendIds);
       const hover = hoverNode.current?.id ?? null;
@@ -403,23 +492,21 @@ export default function SocialGraph(props: Props) {
         if (alpha <= 0.01) continue;
         const pulseAt = pulses.current.get(g.id);
         const pulse = pulseAt ? clamp01(1 - (t - pulseAt) / 1100) : 0;
-        const fillBoost = (hovered || isFocus ? 0.22 : 0.14) + (f.light ? 0.06 : 0);
+        const color = resolve(groupTones.current.get(g.id)!, pal, t);
+        // Flat, paper-like tint: a little denser in the middle, a clean edge, no glow.
+        const fillCore = focusedGroup ? (f.light ? 0.15 : 0.13) + (hovered || isFocus ? 0.07 : 0) : 0.07;
 
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.beginPath();
         smoothPath.context(ctx)(hull);
         const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        grad.addColorStop(0, rgba(g.color, focusedGroup ? fillBoost + f.fade * (isFocus ? 0.08 : 0) : 0.08));
-        grad.addColorStop(1, rgba(g.color, focusedGroup ? 0.05 : 0.03));
+        grad.addColorStop(0, rgba(color, fillCore + pulse * 0.08));
+        grad.addColorStop(1, rgba(color, fillCore * 0.55));
         ctx.fillStyle = grad;
         ctx.fill();
-        if (focusedGroup) {
-          ctx.shadowColor = g.color;
-          ctx.shadowBlur = (isFocus ? 50 : 30) + pulse * 30;
-        }
-        ctx.lineWidth = (focusedGroup ? 1.6 + pulse * 2.5 : 1) / Math.max(gs, 0.5);
-        ctx.strokeStyle = rgba(g.color, (focusedGroup ? 0.35 : 0.22) + (hovered ? 0.25 : 0) + pulse * 0.6 + (isFocus ? 0.3 : 0));
+        ctx.lineWidth = (focusedGroup ? 1.3 + pulse * 2 + (isFocus ? 0.5 : 0) : 1) / Math.max(gs, 0.5);
+        ctx.strokeStyle = rgba(color, (focusedGroup ? 0.5 : 0.3) + (hovered ? 0.25 : 0) + pulse * 0.4 + (isFocus ? 0.2 : 0));
         if (!members.length) ctx.setLineDash([6 / gs, 6 / gs]);
         ctx.stroke();
         ctx.restore();
@@ -430,16 +517,11 @@ export default function SocialGraph(props: Props) {
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
           ctx.font = `600 ${(focusedGroup ? 15 : 12) / gs}px ${fonts.current.heading}`;
-          ctx.fillStyle = f.light ? "#0b1230" : "#e6ecff";
-          if (focusedGroup && !f.light) {
-            ctx.shadowColor = g.color;
-            ctx.shadowBlur = 12;
-          }
+          ctx.fillStyle = pal.ink;
           ctx.fillText(g.name, cx, top - 6 / gs);
-          ctx.shadowBlur = 0;
           if (focusedGroup) {
             ctx.font = `500 ${10.5 / gs}px ${fonts.current.sans}`;
-            ctx.fillStyle = f.light ? rgba(g.color, 1) : rgba(g.color, 0.9);
+            ctx.fillStyle = pal.inkMuted;
             const here = g.activeCount ? `${g.activeCount} here now` : "empty · fading in 24h";
             ctx.fillText(`${g.category} · ${here}`, cx, top - 6 / gs - 17 / gs);
           }
@@ -495,9 +577,12 @@ export default function SocialGraph(props: Props) {
       ctx.stroke();
     }
 
+    const pal = f.pal!;
+    // Flat disc with a soft drop shadow (depth, not glow) and a thin rim in the paper color.
     if (!n.user.away && focused) {
-      ctx.shadowColor = n.color;
-      ctx.shadowBlur = (hovered || selected ? 30 : 16) * (f.light ? 0.6 : 1);
+      ctx.shadowColor = pal.shadow;
+      ctx.shadowBlur = hovered || selected ? 12 : 6;
+      ctx.shadowOffsetY = hovered || selected ? 3 : 1.5;
     }
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -523,10 +608,10 @@ export default function SocialGraph(props: Props) {
       ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
       ctx.restore();
     } else if (r * gs > 9) {
-      ctx.font = `700 ${r * 0.8}px ${fonts.current.sans}`;
+      ctx.font = `600 ${r * 0.78}px ${fonts.current.sans}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(3,5,12,0.85)";
+      ctx.fillStyle = rgba(pal.nodeInk, 0.92);
       ctx.fillText(initials(n.user.name), x, y + r * 0.05);
     }
 
@@ -534,7 +619,7 @@ export default function SocialGraph(props: Props) {
       ctx.beginPath();
       ctx.arc(x, y, r + 4 / gs, 0, Math.PI * 2);
       ctx.lineWidth = 2 / gs;
-      ctx.strokeStyle = f.light ? "#0b1230" : "#ffffff";
+      ctx.strokeStyle = pal.ink;
       ctx.stroke();
 
       ctx.beginPath();
@@ -555,7 +640,7 @@ export default function SocialGraph(props: Props) {
       ctx.font = `500 ${11.5 / gs}px ${fonts.current.sans}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillStyle = f.light ? "rgba(11,18,48,0.85)" : "rgba(230,236,255,0.9)";
+      ctx.fillStyle = rgba(pal.ink, 0.88);
       const label = n.id === meId ? `${n.user.name} (you)` : n.user.name;
       ctx.fillText(label, x, y + r + 5 / gs);
     }
@@ -572,7 +657,10 @@ export default function SocialGraph(props: Props) {
     const b = renderPos(e);
     const vivid = f.vivid?.has(l.key) ?? false;
 
-    let alpha = f.highlight ? (vivid ? 0.95 : 0.05) : f.light ? 0.3 : 0.2;
+    // Hovering (or selecting) someone lifts their own edges and fades the rest.
+    const A = f.light ? EDGE_ALPHA.light : EDGE_ALPHA.dark;
+    const sameGroup = s.user.groupId !== null && s.user.groupId === e.user.groupId;
+    let alpha = f.highlight ? (vivid ? A.highlight : A.faded) : sameGroup ? A.intra : A.inter;
     if (s.user.away || e.user.away) alpha *= 0.6;
     if (!isFocused(s) || !isFocused(e)) alpha *= 0.5;
     if (focus.current && (s.user.groupId !== focus.current.groupId || e.user.groupId !== focus.current.groupId)) {
@@ -593,11 +681,10 @@ export default function SocialGraph(props: Props) {
       grad.addColorStop(0, s.color);
       grad.addColorStop(1, e.color);
       ctx.strokeStyle = grad;
-      ctx.lineWidth = Math.max(2.4, 1.8 / gs);
-      ctx.shadowColor = s.color;
-      ctx.shadowBlur = f.light ? 4 : 10;
+      ctx.lineWidth = Math.max(2, 1.6 / gs);
+      ctx.lineCap = "round";
     } else {
-      ctx.strokeStyle = f.light ? "rgb(60,80,150)" : "rgb(160,180,255)";
+      ctx.strokeStyle = f.pal?.link ?? "#c8bfb2";
       ctx.lineWidth = Math.max(1, 0.8 / gs);
     }
     ctx.stroke();

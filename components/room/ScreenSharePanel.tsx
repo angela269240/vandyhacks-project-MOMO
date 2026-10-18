@@ -17,7 +17,7 @@ export function ScreenSharePanel({ share, ownerName, index }: { share: ScreenSha
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       data-scroll-region
-      className="glass fixed z-20 flex flex-col overflow-hidden rounded-xl shadow-2xl shadow-black/60"
+      className="glass fixed z-20 flex flex-col overflow-hidden rounded-xl elevated"
       style={{
         top: 80 + index * 28,
         right: 24 + index * 28,

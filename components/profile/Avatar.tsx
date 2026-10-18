@@ -10,6 +10,7 @@ export function Avatar({
 }: {
   name: string;
   url?: string | null;
+  /** any CSS color, usually a theme-following palette var */
   color: string;
   size?: number;
   className?: string;
@@ -20,9 +21,9 @@ export function Avatar({
       style={{
         width: size,
         height: size,
-        background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,0.5), transparent 60%), ${color}`,
-        boxShadow: `0 0 ${size / 3}px ${color}88`,
-        color: "rgba(3,5,12,0.85)",
+        background: color,
+        boxShadow: "inset 0 0 0 1px rgb(0 0 0 / 0.08), var(--elev-sm)",
+        color: "var(--map-node-ink)",
         fontSize: size * 0.36,
       }}
     >
