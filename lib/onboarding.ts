@@ -1,8 +1,6 @@
 import "server-only";
-import { AIServiceSpeechClient } from "oci-aispeech";
-import { GenerativeAiInferenceClient } from "oci-generativeaiinference";
+import { chatText, genaiConfigured, parseJson } from "./genai";
 import { INTERESTS } from "./interests";
-import { ociAuth, ociConfigured } from "./oci";
 
 /**
  * Voice onboarding: OCI Speech (realtime) turns the intro into text in the browser, then at most one
@@ -15,28 +13,12 @@ export const MAX_MATCH = 5;
 /** Longest transcript we'll send to the model (a ~60s intro is well under this). */
 const MAX_TRANSCRIPT = 1500;
 
-export const speechConfigured = () => ociConfigured() && Boolean(process.env.OCI_COMPARTMENT_OCID);
-
-let speech: AIServiceSpeechClient | null = null;
-
-/** Short-lived token the browser uses to open the realtime speech websocket directly (no audio passes through us). */
-export async function createSpeechSession() {
-  speech ??= new AIServiceSpeechClient({ authenticationDetailsProvider: ociAuth() });
-  const compartmentId = process.env.OCI_COMPARTMENT_OCID!;
-  const res = await speech.createRealtimeSessionToken({ createRealtimeSessionTokenDetails: { compartmentId } });
-  return {
-    token: res.realtimeSessionToken.token,
-    compartmentId,
-    endpoint: `wss://realtime.aiservice.${process.env.OCI_REGION}.oci.oraclecloud.com/ws/transcribe/stream`,
-  };
-}
-
 export type ProfileSuggestion = { interestIds: number[]; bio: string | null; source: "ai" | "keywords" };
 
 export async function suggestProfile(transcript: string): Promise<ProfileSuggestion> {
   const text = transcript.replace(/\s+/g, " ").trim().slice(0, MAX_TRANSCRIPT);
   const fromKeywords = matchKeywords(text);
-  if (ociConfigured() && process.env.OCI_GENAI_MODEL_ID && process.env.OCI_COMPARTMENT_OCID) {
+  if (genaiConfigured()) {
     const ai = await askModel(text).catch((e) => {
       console.error("[onboarding] GenAI failed, using keywords", e);
       return null;
@@ -52,42 +34,18 @@ export async function suggestProfile(transcript: string): Promise<ProfileSuggest
 
 // ---- GenAI ----
 
-let genai: GenerativeAiInferenceClient | null = null;
-
 const PREAMBLE = `You set up profiles for Orbit, a campus app. From a student's spoken self-introduction, return JSON:
 {"interests": [3-5 names copied exactly from the list], "bio": "first-person bio, at most 200 characters, no filler words"}
 Only pick interests the student actually mentioned or clearly implied. List: ${INTERESTS.map((i) => i.name).join(", ")}.`;
 
 async function askModel(transcript: string): Promise<{ interestIds: number[]; bio: string | null } | null> {
-  genai ??= new GenerativeAiInferenceClient({ authenticationDetailsProvider: ociAuth() });
-  const res = await withTimeout(
-    genai.chat({
-      chatDetails: {
-        compartmentId: process.env.OCI_COMPARTMENT_OCID!,
-        servingMode: { servingType: "ON_DEMAND", modelId: process.env.OCI_GENAI_MODEL_ID! },
-        chatRequest: {
-          apiFormat: "COHERE",
-          preambleOverride: PREAMBLE,
-          message: transcript,
-          responseFormat: { type: "JSON_OBJECT" },
-          maxTokens: 160,
-          temperature: 0,
-        } as never,
-      },
-    }),
-    10_000,
-  );
-  if (!res || !("chatResult" in res)) return null;
-  const raw = (res.chatResult.chatResponse as { text?: string }).text ?? "";
-  const parsed = JSON.parse(raw.replace(/^```(?:json)?|```$/gm, "").trim()) as { interests?: unknown; bio?: unknown };
+  const raw = await chatText({ preamble: PREAMBLE, message: transcript, maxTokens: 160, json: true });
+  if (!raw) return null;
+  const parsed = parseJson<{ interests?: unknown; bio?: unknown }>(raw);
   const names = Array.isArray(parsed.interests) ? parsed.interests.map((n) => String(n).toLowerCase()) : [];
   const interestIds = INTERESTS.filter((i) => names.includes(i.name.toLowerCase())).map((i) => i.id);
   const bio = typeof parsed.bio === "string" && parsed.bio.trim() ? parsed.bio.trim().slice(0, 280) : null;
   return { interestIds, bio };
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("GenAI timed out")), ms))]);
 }
 
 // ---- keyword fallback ----

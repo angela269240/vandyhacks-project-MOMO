@@ -1,6 +1,7 @@
 import oracledb from "oracledb";
 import { query, withConnection } from "../db";
-import type { Bookmark, ChatHour, ChatMessage, Group, Interest, User } from "../types";
+import { joinNotes, notesExpiry } from "../notes";
+import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, Interest, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
@@ -29,6 +30,12 @@ type GroupRow = {
 };
 
 type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string };
+
+type NotesRow = { CONTENT: string | null; VERSION: number; CREATED_AT: Date; UPDATED_AT: Date; EXPIRES_AT: Date };
+
+const NOTES_SELECT = `SELECT content, version, created_at, updated_at, expires_at FROM group_notes WHERE group_id = :g AND expires_at > :now`;
+/** ORA-00001: another request created the same room's notes row first. */
+const isDuplicate = (e: unknown) => String(e).includes("ORA-00001");
 
 const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 
@@ -69,6 +76,64 @@ function toGroup(r: GroupRow): Group {
     createdAt: iso(r.CREATED_AT)!,
     lastExitAt: iso(r.LAST_EXIT_AT),
   };
+}
+
+function toNotes(r: NotesRow): GroupNotes {
+  return {
+    content: r.CONTENT ?? "", // Oracle stores '' as NULL
+    version: r.VERSION,
+    createdAt: iso(r.CREATED_AT)!,
+    updatedAt: iso(r.UPDATED_AT)!,
+    expiresAt: iso(r.EXPIRES_AT)!,
+  };
+}
+
+/**
+ * Read-modify-write of one room's notes under a row lock, so concurrent AI lines and manual saves serialize.
+ * `change` gets the live notes (null if none) and returns the new content, or null to leave them alone.
+ * An expired file is deleted first, so a new one starts a fresh 60-day clock.
+ */
+async function writeNotes(
+  groupId: number,
+  now: Date,
+  change: (current: GroupNotes | null) => string | null,
+): Promise<GroupNotes | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await withConnection(async (conn) => {
+        await conn.execute(`DELETE FROM group_notes WHERE group_id = :g AND expires_at <= :now`, { g: groupId, now });
+        const res = await conn.execute<NotesRow>(`${NOTES_SELECT} FOR UPDATE`, { g: groupId, now });
+        const current = res.rows?.[0] ? toNotes(res.rows[0]) : null;
+        const content = change(current);
+        if (content === null) {
+          await conn.rollback();
+          return null;
+        }
+        const binds = { g: groupId, now, content: { val: content, type: oracledb.CLOB } };
+        if (current) {
+          await conn.execute(
+            `UPDATE group_notes SET content = :content, version = version + 1, updated_at = :now WHERE group_id = :g`,
+            binds,
+          );
+        } else {
+          await conn.execute(
+            `INSERT INTO group_notes (group_id, content, version, created_at, updated_at, expires_at)
+             VALUES (:g, :content, 1, :now, :now, :exp)`,
+            { ...binds, exp: notesExpiry(now) },
+          );
+        }
+        await conn.commit();
+        const ts = now.toISOString();
+        return current
+          ? { ...current, content, version: current.version + 1, updatedAt: ts }
+          : { content, version: 1, createdAt: ts, updatedAt: ts, expiresAt: notesExpiry(now).toISOString() };
+      });
+    } catch (e) {
+      // Two first lines raced to create the row: retry once and update the winner's row instead.
+      if (attempt === 0 && isDuplicate(e)) continue;
+      throw e;
+    }
+  }
 }
 
 function toChatHour(r: ChatRow): ChatHour {
@@ -304,6 +369,27 @@ export const oracleStore: Store = {
     return rows.map(toChatHour);
   },
 
+  async getNotes(groupId, now) {
+    const rows = await query<NotesRow>(NOTES_SELECT, { g: groupId, now });
+    return rows[0] ? toNotes(rows[0]) : null;
+  },
+
+  async addNotes(groupId, lines, position, now) {
+    return (await writeNotes(groupId, now, (current) => joinNotes(current?.content ?? "", lines, position)))!;
+  },
+
+  async saveNotes(groupId, content, baseVersion, now) {
+    return writeNotes(groupId, now, (current) => ((current?.version ?? 0) === baseVersion ? content : null));
+  },
+
+  async expireNotes(now) {
+    return withConnection(async (conn) => {
+      const res = await conn.execute(`DELETE FROM group_notes WHERE expires_at <= :now`, { now });
+      await conn.commit();
+      return res.rowsAffected ?? 0;
+    });
+  },
+
   async expireGroups(now, lingerMs) {
     const cutoff = new Date(now.getTime() - lingerMs);
     const rows = await query<GroupRow>(
@@ -320,7 +406,7 @@ export const oracleStore: Store = {
         await conn.execute(`DELETE FROM interest_groups WHERE id = :g`, { g: group.id });
         await conn.commit();
       });
-      expired.push({ group, chat });
+      expired.push({ group, chat }); // group_notes goes with it (ON DELETE CASCADE)
     }
     return expired;
   },

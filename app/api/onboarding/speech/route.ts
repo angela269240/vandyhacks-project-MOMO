@@ -1,5 +1,5 @@
 import { handle, json } from "@/lib/api";
-import { createSpeechSession, speechConfigured } from "@/lib/onboarding";
+import { createSpeechSession, speechConfigured } from "@/lib/speech";
 import { rateLimited } from "@/lib/rate-limit";
 
 /** Realtime speech token for the welcome screen. Called before the profile exists, so it's limited per IP instead. */

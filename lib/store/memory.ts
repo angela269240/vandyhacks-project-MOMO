@@ -1,6 +1,7 @@
 import { INTERESTS } from "../interests";
 import { buildSeedWorld } from "../seed-data";
-import type { Bookmark, ChatHour, ChatMessage, Group, ProfileInput, User } from "../types";
+import { joinNotes, notesExpiry } from "../notes";
+import type { Bookmark, ChatHour, ChatMessage, Group, GroupNotes, ProfileInput, User } from "../types";
 import { buildGraph } from "./graph";
 import type { Store } from "./types";
 
@@ -15,6 +16,7 @@ type State = {
   screens: Map<number, string>;
   friendships: Map<string, Friendship>;
   chat: Map<string, ChatHour & { groupId: number }>;
+  notes: Map<number, GroupNotes>;
   nextGroupId: number;
 };
 
@@ -24,7 +26,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 function seededState(): State {
   const now = new Date();
   const world = buildSeedWorld(now, { crowd: true }); // local demo only: +100 people, two 40-person groups
-  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), nextGroupId: 1 };
+  const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), notes: new Map(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
     const id = state.nextGroupId++;
@@ -64,8 +66,8 @@ function seededState(): State {
 
 // Survive Next.js dev hot reloads: one world per server process.
 // Bump the key when the stored shape changes so a running dev server reseeds instead of crashing.
-const g = globalThis as unknown as { __socialMapperMemoryV4?: State };
-const state = () => (g.__socialMapperMemoryV4 ??= seededState());
+const g = globalThis as unknown as { __socialMapperMemoryV5?: State };
+const state = () => (g.__socialMapperMemoryV5 ??= seededState());
 
 function publicUser(u: StoredUser): User {
   const { deviceKeyHash, ...rest } = u;
@@ -225,6 +227,45 @@ export const memoryStore: Store = {
       .map(({ hourStart, messages }) => ({ hourStart, messages: [...messages] }));
   },
 
+  async getNotes(groupId, now) {
+    const n = state().notes.get(groupId);
+    return n && new Date(n.expiresAt) > now ? { ...n } : null;
+  },
+
+  async addNotes(groupId, lines, position, now) {
+    const s = state();
+    const current = await this.getNotes(groupId, now);
+    const ts = now.toISOString();
+    const next: GroupNotes = current
+      ? { ...current, content: joinNotes(current.content, lines, position), version: current.version + 1, updatedAt: ts }
+      : { content: joinNotes("", lines, position), version: 1, createdAt: ts, updatedAt: ts, expiresAt: notesExpiry(now).toISOString() };
+    s.notes.set(groupId, next);
+    return { ...next };
+  },
+
+  async saveNotes(groupId, content, baseVersion, now) {
+    const s = state();
+    const current = await this.getNotes(groupId, now);
+    if ((current?.version ?? 0) !== baseVersion) return null;
+    const ts = now.toISOString();
+    const next: GroupNotes = current
+      ? { ...current, content, version: current.version + 1, updatedAt: ts }
+      : { content, version: 1, createdAt: ts, updatedAt: ts, expiresAt: notesExpiry(now).toISOString() };
+    s.notes.set(groupId, next);
+    return { ...next };
+  },
+
+  async expireNotes(now) {
+    const s = state();
+    let removed = 0;
+    for (const [id, n] of s.notes) {
+      if (new Date(n.expiresAt) > now) continue;
+      s.notes.delete(id);
+      removed++;
+    }
+    return removed;
+  },
+
   async expireGroups(now, lingerMs) {
     const s = state();
     const cutoff = now.getTime() - lingerMs;
@@ -233,6 +274,7 @@ export const memoryStore: Store = {
       if (activeCount(grp.id) > 0 || !grp.lastExitAt || new Date(grp.lastExitAt).getTime() > cutoff) continue;
       const chat = await this.getChat(grp.id, Number.MAX_SAFE_INTEGER);
       s.groups.delete(grp.id);
+      s.notes.delete(grp.id);
       s.screens.delete(grp.id);
       for (const [k, c] of s.chat) if (c.groupId === grp.id) s.chat.delete(k);
       for (const u of s.users.values()) {

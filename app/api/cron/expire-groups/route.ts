@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Vercel Cron (daily; see vercel.json). Vercel sends `Authorization: Bearer $CRON_SECRET`.
- * Archives and deletes groups that have been empty for the linger window.
+ * Archives and deletes groups that have been empty for the linger window, and deletes notes files past 60 days.
+ * Notes are never archived: they go with their room, or at 60 days, whichever comes first.
  */
 export const GET = handle(async (req: Request) => {
   const secret = process.env.CRON_SECRET;
@@ -25,5 +26,7 @@ export const GET = handle(async (req: Request) => {
     await broadcastLobby({ type: "group_expired", payload: { groupId: group.id } });
   }
 
-  return json({ expired: expired.map((e) => e.group.name) });
+  const notesExpired = await store.expireNotes(now);
+
+  return json({ expired: expired.map((e) => e.group.name), notesExpired });
 });

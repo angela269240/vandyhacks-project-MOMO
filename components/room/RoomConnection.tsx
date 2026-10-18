@@ -8,9 +8,10 @@ import { toast } from "sonner";
 import useSWR, { useSWRConfig } from "swr";
 import { refreshGraph, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
+import { type NoteTakerStatus, useNoteTaker, useNotetakingPref } from "@/hooks/useNoteTaker";
 import { useConfig, useSseChannel } from "@/hooks/useRealtime";
 import { ApiError, api, fetcher, loadIdentity } from "@/lib/client/api";
-import type { ChatHour, ChatMessage, Group, RoomEvent as AppRoomEvent } from "@/lib/types";
+import type { ChatHour, ChatMessage, Group, GroupNotes, RoomEvent as AppRoomEvent } from "@/lib/types";
 
 /**
  * The live room connection lives here, in the map layout, not in the room page: minimizing the room
@@ -71,6 +72,16 @@ type RoomConnection = {
   setChatOpen: (open: boolean) => void;
   draft: string;
   setDraft: (text: string) => void;
+  /** the room's shared notes file (version 0 = none yet) */
+  notes: GroupNotes | undefined;
+  /** saves a manual edit; throws ApiError 409 if the notes changed since `version` */
+  saveNotes: (content: string, version: number) => Promise<GroupNotes>;
+  refreshNotes: () => void;
+  notetakingOn: boolean;
+  setNotetakingOn: (on: boolean) => void;
+  noteTaker: NoteTakerStatus;
+  /** what the server can do: AI notetaking (speech + GenAI) and chat summaries (GenAI) */
+  ai: { notes: boolean; summary: boolean };
   /** join (or switch to) a room; a no-op if already in it */
   enter: (name: string) => void;
   /** stop media, disconnect, end presence */
@@ -170,18 +181,49 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
   const chatKey = session?.group ? groupApi(session.group.name, "chat") : null;
   const { data: hours = [], mutate: mutateChat } = useSWR<ChatHour[]>(chatKey, fetcher, { revalidateOnFocus: false });
 
+  // ---- notes ----
+  const notesKey = session?.group ? groupApi(session.group.name, "notes") : null;
+  const { data: notes, mutate: mutateNotes } = useSWR<GroupNotes>(notesKey, fetcher, { revalidateOnFocus: false });
+  const [notetakingOn, setNotetakingOn] = useNotetakingPref();
+  const ai = useMemo(() => config?.ai ?? { notes: false, summary: false }, [config?.ai]);
+  const noteTaker = useNoteTaker({
+    groupName: session?.status === "live" ? (session.group?.name ?? null) : null,
+    active: notetakingOn && voice.micOn,
+    available: ai.notes,
+  });
+
+  const saveNotes = useCallback(
+    async (content: string, version: number) => {
+      const group = sessionRef.current?.group;
+      if (!group) throw new Error("Not in a room");
+      const saved = await api<GroupNotes>(groupApi(group.name, "notes"), { method: "PUT", body: { content, version } });
+      mutateNotes(saved, { revalidate: false });
+      return saved;
+    },
+    [mutateNotes],
+  );
+
+  const refreshNotes = useCallback(() => void mutateNotes(), [mutateNotes]);
+
   const live = useRef({ chatOpen, roomVisible, meId });
   useEffect(() => {
     live.current = { chatOpen, roomVisible, meId };
   });
   const onRoomEvent = useCallback(
     (e: AppRoomEvent) => {
+      if (e.type === "notes") {
+        // The event only says the notes changed; fetch them unless we already have that version.
+        mutateNotes((prev) => prev, { revalidate: false }).then((cur) => {
+          if ((cur?.version ?? 0) < e.payload.version) mutateNotes();
+        });
+        return;
+      }
       if (e.type !== "chat") return;
       mutateChat((prev) => appendChat(prev ?? [], e.payload.hourStart, e.payload.message), { revalidate: false });
       const { chatOpen: open, roomVisible: visible, meId: me } = live.current;
       if (e.payload.message.userId !== me && !(open && visible)) setUnread((n) => n + 1);
     },
-    [mutateChat],
+    [mutateChat, mutateNotes],
   );
   const onRoomEventRef = useRef(onRoomEvent);
   useEffect(() => {
@@ -306,6 +348,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
             if (roomRef.current !== r) return;
             setSession((s) => s && { ...s, status: "live", error: null });
             mutateChat();
+            mutateNotes();
             sync();
           })
           .on(RoomEvent.Disconnected, () => {
@@ -332,7 +375,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       cancelled = true;
       teardownMedia();
     };
-  }, [target, config, meId, mutate, mutateChat, syncFromRoom, teardownMedia, releaseScreen]);
+  }, [target, config, meId, mutate, mutateChat, mutateNotes, syncFromRoom, teardownMedia, releaseScreen]);
 
   // Closing the tab ends presence (the LiveKit webhook covers crashes).
   useEffect(() => {
@@ -533,11 +576,41 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       setChatOpen,
       draft,
       setDraft,
+      notes,
+      saveNotes,
+      refreshNotes,
+      notetakingOn,
+      setNotetakingOn,
+      noteTaker,
+      ai,
       enter,
       leave,
       retry,
     }),
-    [session, roomVisible, voice, room, getLevel, toggleMic, toggleScreen, hours, sendChat, unread, chatOpen, draft, enter, leave, retry],
+    [
+      session,
+      roomVisible,
+      voice,
+      room,
+      getLevel,
+      toggleMic,
+      toggleScreen,
+      hours,
+      sendChat,
+      unread,
+      chatOpen,
+      draft,
+      notes,
+      saveNotes,
+      refreshNotes,
+      notetakingOn,
+      setNotetakingOn,
+      noteTaker,
+      ai,
+      enter,
+      leave,
+      retry,
+    ],
   );
 
   return (

@@ -1,0 +1,106 @@
+{
+  "id": "20261017-2136-feat-room-notes-d6f7",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "feat/room-notes",
+  "base": "557517d",
+  "started": "2026-10-18T02:36:52.266Z",
+  "ended": null,
+  "status": "done",
+  "goal": "Room notes: voice-triggered AI notetaking into a shared 60-day notes file, manual edit, download, on/off switch, and a summarize-last-100-messages button; then check OCI credits",
+  "summary": "Room notes and chat AI. Each room has one shared notes file (group_notes table / memory map) deleted 60 days after its first line. With AI notetaking on and the mic on, a local dBFS meter (-45 dBFS for 250ms) opens an OCI Speech realtime session; finals are batched (40 words / 45s / session end) to POST /notes/transcript, where OCI GenAI files scheduled events at the top and topic facts at the bottom. Transcripts are never stored or logged. Notes are hand-editable with version-checked saves and a line merge on conflict, downloadable as .md from the chat header, and a sparkle button summarizes the last 100 messages. Speech/GenAI helpers moved to lib/speech.ts and lib/genai.ts; onboarding uses them.",
+  "claims": [
+    "lib/notes.ts",
+    "lib/genai.ts",
+    "lib/speech.ts",
+    "lib/room-ai.ts",
+    "lib/onboarding.ts",
+    "lib/types.ts",
+    "lib/schemas.ts",
+    "lib/store/**",
+    "db/schema.sql",
+    "scripts/migrate.ts",
+    "app/api/groups/[name]/notes/**",
+    "app/api/groups/[name]/summary/**",
+    "app/api/onboarding/speech/route.ts",
+    "app/api/cron/expire-groups/route.ts",
+    "hooks/useNoteTaker.ts",
+    "components/room/ChatPanel.tsx",
+    "components/room/NotesPanel.tsx",
+    "components/room/RoomConnection.tsx",
+    "components/room/RoomView.tsx"
+  ],
+  "files_touched": [
+    "app/api/config/route.ts",
+    "app/api/cron/expire-groups/route.ts",
+    "app/api/onboarding/speech/route.ts",
+    "app/api/groups/[name]/notes/route.ts",
+    "app/api/groups/[name]/notes/speech/route.ts",
+    "app/api/groups/[name]/notes/transcript/route.ts",
+    "app/api/groups/[name]/summary/route.ts",
+    "components/room/ChatPanel.tsx",
+    "components/room/NotesPanel.tsx",
+    "components/room/RoomConnection.tsx",
+    "components/room/RoomView.tsx",
+    "db/schema.sql",
+    "hooks/useNoteTaker.ts",
+    "hooks/useRealtime.ts",
+    "lib/api.ts",
+    "lib/genai.ts",
+    "lib/notes.ts",
+    "lib/onboarding.ts",
+    "lib/room-ai.ts",
+    "lib/rooms.ts",
+    "lib/schemas.ts",
+    "lib/speech.ts",
+    "lib/store/memory.ts",
+    "lib/store/oracle.ts",
+    "lib/store/types.ts",
+    "lib/types.ts",
+    "scripts/migrate.ts"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Notes are per room and shared; the AI notetaking switch is per person (localStorage orbit.notetaking, default on) and only covers that person's own mic.",
+      "why": "Each browser transcribes only its own speaker, so consent is per person; the notes are the room's shared source of truth."
+    },
+    {
+      "what": "Speech only streams to OCI after local audio passes -45 dBFS for 250ms, closes after 8s of quiet, and only while the room mic is unmuted.",
+      "why": "Matches the decibel trigger in the request and keeps paid speech sessions short."
+    },
+    {
+      "what": "Room notes events carry only {version}; clients refetch GET /notes.",
+      "why": "The file can outgrow a LiveKit data packet."
+    },
+    {
+      "what": "Notes are not copied into chat-archive when a group expires; they cascade-delete with the group.",
+      "why": "Archiving would keep them past the 60-day deletion promise. Trade-off: a room that empties for the linger window loses its notes early."
+    },
+    {
+      "what": "Edit conflicts: 409 + refetch, then 'Use theirs' or 'Merge both' (lib/notes.ts mergeNotes adds their new lines at top/bottom).",
+      "why": "AI lines arrive while someone edits; overwriting would drop them."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "Dev server on the memory store with LiveKit off: transcript API filed an event at top and two facts at bottom, ignored small talk, 403 before joining, 409 on a stale save; UI: notes view, live AI update, conflict banner + Merge both, switch persists, download filename/content, summary card (9 seed messages). 60-day expiry checked on the memory store with a simulated clock. NOT tested: real microphone -> OCI Speech path (the browser pane blocks mic), the Oracle store (shared DB has no group_notes table yet)."
+  },
+  "next_steps": [
+    "One person applies the schema to the shared DB: npm run db:migrate -- --upgrade (creates group_notes; safe to re-run).",
+    "Test AI notetaking with a real mic in Chrome: join a room, Join voice, talk about the room topic and mention a future meeting; check the notes view updates within ~10s of pausing.",
+    "Tune SPEAK_DBFS in hooks/useNoteTaker.ts if it triggers on background noise or misses quiet speakers."
+  ],
+  "open_questions": [
+    "Should notes outlive their room if the group expires before 60 days (e.g. move them to object storage with a 60-day lifecycle rule)?"
+  ],
+  "blockers": [],
+  "conflict_notes": [
+    "The paused `color` session claims components/room/**; this branch edits ChatPanel.tsx, RoomConnection.tsx, RoomView.tsx and adds NotesPanel.tsx with the current neon/white-alpha classes. Port those to hue vars when merging."
+  ]
+}

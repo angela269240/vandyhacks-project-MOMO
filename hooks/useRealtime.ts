@@ -5,7 +5,12 @@ import { useEffect, useRef } from "react";
 import useSWR from "swr";
 import { api, fetcher } from "@/lib/client/api";
 
-export type AppConfig = { realtime: "livekit" | "sse"; livekitUrl: string | null; store: "oracle" | "memory" };
+export type AppConfig = {
+  realtime: "livekit" | "sse";
+  livekitUrl: string | null;
+  store: "oracle" | "memory";
+  ai: { notes: boolean; summary: boolean };
+};
 
 export function useConfig() {
   return useSWR<AppConfig>("/api/config", fetcher, { revalidateOnFocus: false }).data;

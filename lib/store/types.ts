@@ -1,10 +1,13 @@
-import type { Bookmark, ChatHour, ChatMessage, FriendState, Graph, Group, Interest, ProfileInput, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, FriendState, Graph, Group, GroupNotes, Interest, ProfileInput, User } from "../types";
 
 export type UserPatch = Partial<ProfileInput> & { bookmarks?: Bookmark[] };
 
 export type JoinResult = { group: Group; fromGroupId: number | null };
 
 export type ExpiredGroup = { group: Group; chat: ChatHour[] };
+
+/** Where an AI note goes: scheduled events at the start of the file, topic facts at the end. */
+export type NotePosition = "start" | "end";
 
 /** Everything the API needs from persistence. Implemented by the Oracle store and the in-memory fallback. */
 export interface Store {
@@ -37,6 +40,15 @@ export interface Store {
 
   appendChat(groupId: number, message: ChatMessage, hourStart: string): Promise<void>;
   getChat(groupId: number, limitHours: number): Promise<ChatHour[]>;
+
+  /** The room's notes, or null if there are none (or they've passed their 60-day expiry). */
+  getNotes(groupId: number, now: Date): Promise<GroupNotes | null>;
+  /** Adds lines at the start or end, creating the file (and starting its 60-day clock) if needed. */
+  addNotes(groupId: number, lines: string[], position: NotePosition, now: Date): Promise<GroupNotes>;
+  /** Replaces the file after a manual edit. Returns null if someone else saved since `baseVersion`. */
+  saveNotes(groupId: number, content: string, baseVersion: number, now: Date): Promise<GroupNotes | null>;
+  /** Deletes notes files past their expiry. Returns how many were removed. */
+  expireNotes(now: Date): Promise<number>;
 
   /** Removes groups with no active members whose last exit is older than the linger window. */
   expireGroups(now: Date, lingerMs: number): Promise<ExpiredGroup[]>;

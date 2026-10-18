@@ -8,10 +8,23 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import oracledb from "oracledb";
 
-const TABLES = ["friendships", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
+const TABLES = ["friendships", "group_notes", "group_chat_hours", "group_members", "user_interests", "users", "interest_groups", "interests"];
 
-/** Additive changes for databases created from an older schema.sql. ORA-01430 = column already exists. */
-const UPGRADES = [`ALTER TABLE interest_groups ADD (screen_sharer_id VARCHAR2(36))`];
+/**
+ * Additive changes for databases created from an older schema.sql.
+ * ORA-01430 = column already exists, ORA-00955 = table already exists.
+ */
+const UPGRADES = [
+  `ALTER TABLE interest_groups ADD (screen_sharer_id VARCHAR2(36))`,
+  `CREATE TABLE group_notes (
+     group_id    NUMBER PRIMARY KEY REFERENCES interest_groups(id) ON DELETE CASCADE,
+     content     CLOB,
+     version     NUMBER DEFAULT 1 NOT NULL,
+     created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+     expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+   )`,
+];
 
 async function main() {
   const conn = await oracledb.getConnection({
@@ -26,7 +39,7 @@ async function main() {
           await conn.execute(stmt);
           console.log(`ok: ${stmt}`);
         } catch (e) {
-          if (!String(e).includes("ORA-01430")) throw e;
+          if (!/ORA-0(1430|0955)/.test(String(e))) throw e;
           console.log(`already applied: ${stmt}`);
         }
       }
