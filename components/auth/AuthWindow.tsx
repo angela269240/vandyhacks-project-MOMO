@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useMe } from "@/hooks/useMe";
 import { ApiError, api, type Identity } from "@/lib/client/api";
 import { hueVar, identityColor } from "@/lib/colors";
+import { isSchoolEmail } from "@/lib/schemas";
 import type { FriendState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -267,7 +268,7 @@ function RegisterPanel({
 
   const sendCode = async () => {
     const address = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.edu$/.test(address)) return setErrors({ email: "Use your school email (ending in .edu)." });
+    if (!/^[^\s@]+@[^\s@]+$/.test(address) || !isSchoolEmail(address)) return setErrors({ email: "Use your school email (ending in .edu)." });
     setBusy(true);
     setErrors({});
     try {

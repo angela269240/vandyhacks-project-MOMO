@@ -74,8 +74,16 @@ export const transcriptSchema = z.object({
 
 export const emailSchema = z.string().trim().toLowerCase().max(254).pipe(z.email("Enter a valid email address"));
 
-/** A school address: the domain ends in .edu (vanderbilt.edu, cs.vanderbilt.edu, ...). */
-export const eduEmailSchema = emailSchema.refine((e) => /\.edu$/.test(e.split("@")[1] ?? ""), {
+/** Non-.edu addresses allowed to sign up anyway (team accounts). */
+const EDU_EXCEPTIONS = ["eluo.5230@gmail.com"];
+
+/** A school address (the domain ends in .edu: vanderbilt.edu, cs.vanderbilt.edu, ...) or one of the exceptions. */
+export const isSchoolEmail = (email: string) => {
+  const e = email.trim().toLowerCase();
+  return /\.edu$/.test(e.split("@")[1] ?? "") || EDU_EXCEPTIONS.includes(e);
+};
+
+export const eduEmailSchema = emailSchema.refine(isSchoolEmail, {
   message: "Use your school email (ending in .edu)",
 });
 
