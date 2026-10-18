@@ -110,6 +110,7 @@ export default function SocialGraph(props: Props) {
   const cardPlacement = useRef<{ id: string; side: "left" | "right" } | null>(null);
   const scrubBase = useRef<number | null>(null);
   const motionOK = useRef(true);
+  const paused = useRef(false);
   const fonts = useRef({ sans: "sans-serif", heading: "sans-serif" });
   const frame = useRef({
     t: 0,
@@ -167,11 +168,14 @@ export default function SocialGraph(props: Props) {
     let anchored: NodeData[] = [];
     const anchor = Object.assign(
       (alpha: number) => {
+        // Floored so people crossing the map to a bubble's new spot (e.g. after joining a group reshuffles the
+        // layout) still arrive once the sim cools, instead of stalling against other bubbles mid-way.
+        const pull = 0.08 * Math.max(alpha, 0.12);
         for (const n of anchored) {
           if (n.fx !== undefined) continue;
           const t = targetFor(n);
-          n.vx = (n.vx ?? 0) + (t.x - (n.x ?? 0)) * 0.08 * alpha;
-          n.vy = (n.vy ?? 0) + (t.y - (n.y ?? 0)) * 0.08 * alpha;
+          n.vx = (n.vx ?? 0) + (t.x - (n.x ?? 0)) * pull;
+          n.vy = (n.vy ?? 0) + (t.y - (n.y ?? 0)) * pull;
         }
       },
       { initialize: (ns: NodeData[]) => (anchored = ns) },
@@ -223,8 +227,18 @@ export default function SocialGraph(props: Props) {
         fg.zoom(c.k, ms);
       },
       getCamera: () => ({ ...fg.centerAt(), k: fg.zoom() }),
-      pause: () => fg.pauseAnimation(),
-      resume: () => fg.resumeAnimation(),
+      pause: () => {
+        paused.current = true;
+        fg.pauseAnimation();
+      },
+      resume: () => {
+        fg.resumeAnimation();
+        if (!paused.current) return;
+        paused.current = false;
+        // The cooldown clock keeps running while paused, so without a reheat the simulation stops on the next
+        // tick and bubbles stay frozen wherever the pause caught them (e.g. mid-move after joining a group).
+        fg.d3ReheatSimulation();
+      },
       focusGroup: (groupId) => (focus.current = groupId === null ? null : { groupId, start: performance.now() }),
       scrub: (progress) => {
         if (progress <= 0) {
