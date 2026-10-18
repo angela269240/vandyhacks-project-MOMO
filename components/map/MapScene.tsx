@@ -33,6 +33,7 @@ import { MapSidebar, type SearchPick, SIDEBAR_WIDTH } from "./MapSidebar";
 import type { MapApi } from "./SocialGraph";
 
 const SocialGraph = dynamic(() => import("./SocialGraph"), { ssr: false });
+const INITIAL_ZOOM_BOOST = 1.2;
 
 const roomNameFrom = (path: string) => (path.startsWith("/g/") ? decodeURIComponent(path.slice(3)) : null);
 
@@ -91,8 +92,8 @@ export function MapScene() {
     if (roomGroupId !== null) out.add(roomGroupId);
     return out;
   }, [graph, uncheckedTags, activeBookmark, visibleUserIds, myGroupId, roomGroupId]);
-  // Search only highlights and pulls matches toward the middle; it never hides bubbles. Typing never moves the
-  // camera; picking a result narrows the highlight to that one bubble or person and glides over to it.
+  // Search never hides bubbles. Matching people only highlight and jiggle in place; matching bubbles can reclaim
+  // the center. Picking a bubble glides to it, while picking a person leaves the map undisturbed.
   const search = useMemo((): SearchMatches | null => {
     if (picked?.kind === "group") return { groupIds: new Set([picked.id]), userIds: new Set() };
     if (picked?.kind === "user") return { groupIds: new Set(), userIds: new Set([picked.id]) };
@@ -106,9 +107,11 @@ export function MapScene() {
   const onPick = (pick: SearchPick, label: string) => {
     setQuery(label);
     setPicked(pick);
-    const inset = menuOpen && window.innerWidth >= 640 ? SIDEBAR_WIDTH + 12 : 0;
-    // after the re-render, once the layout has moved the pick to its new spot
-    setTimeout(() => apiRef.current?.centerOn(pick.kind === "group" ? { groupId: pick.id } : { userId: pick.id }, inset), 60);
+    if (pick.kind === "group") {
+      const inset = menuOpen && window.innerWidth >= 640 ? SIDEBAR_WIDTH + 12 : 0;
+      // after the re-render, once the layout has moved the picked bubble to its new spot
+      setTimeout(() => apiRef.current?.centerOn({ groupId: pick.id }, inset), 60);
+    }
     setSelectedId(pick.kind === "user" ? pick.id : null);
   };
 
@@ -136,7 +139,7 @@ export function MapScene() {
       if (roomGroupId !== null) {
         api.focusGroup(roomGroupId);
         api.zoomToGroup(roomGroupId, ms);
-      } else api.fitFocused(ms);
+      } else api.fitFocused(ms, INITIAL_ZOOM_BOOST);
     };
     // once quickly, then again after the bubbles have settled into their spots
     const timers = [setTimeout(() => fit(0), 600), setTimeout(() => fit(900), 2400)];

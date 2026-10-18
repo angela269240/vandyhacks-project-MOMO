@@ -76,8 +76,8 @@ export type RoomSnapshot = {
 
 export type MapApi = {
   zoomToGroup: (groupId: number, ms?: number) => void;
-  /** fit the focused bubbles (your bubble ends up near the center) */
-  fitFocused: (ms?: number) => void;
+  /** fit the focused bubbles (your bubble ends up near the center); zoomBoost makes an intentional closer crop */
+  fitFocused: (ms?: number, zoomBoost?: number) => void;
   setCamera: (c: Camera, ms?: number) => void;
   pause: () => void;
   resume: () => void;
@@ -103,7 +103,7 @@ type Props = {
   focusedGroupIds: Set<number>;
   /** degrees-of-connection filter; null shows everyone */
   visibleUserIds: Set<string> | null;
-  /** search matches to highlight and pull toward the middle; null when not searching */
+  /** search matches to highlight; matching people jiggle in place, while matching bubbles can take layout priority */
   search: SearchMatches | null;
   /** set while inside a room: the map becomes the room (no pan/zoom, others faded, camera follows the bubble) */
   roomGroupId: number | null;
@@ -412,22 +412,12 @@ export default function SocialGraph(props: Props) {
         // Floored so people crossing the map to a bubble's new spot (e.g. after joining a group reshuffles the
         // layout) still arrive once the sim cools, instead of stalling against other bubbles mid-way.
         const pull = ANCHOR_EASE * Math.max(alpha, 0.12);
-        const hits = propsRef.current.search?.userIds;
-        const view = hits?.size ? fgRef.current?.centerAt() : undefined;
         for (const n of anchored) {
           if (n.fx !== undefined) continue;
-          let t = targetFor(n);
+          const t = targetFor(n);
           // Bubble members float freely inside their bubble (so a bigger group spreads out and fills a bigger one);
           // only the part of the distance beyond that free zone is pulled in.
-          let free = n.user.groupId === null ? 0 : memberSpread(n.user.groupId);
-          if (view && n.user.groupId !== null && hits!.has(n.id)) {
-            // A search match drifts to the spot in its bubble nearest the middle of the screen, never past the edge.
-            const ox = view.x - t.x;
-            const oy = view.y - t.y;
-            const reach = Math.min(1, free / Math.max(Math.hypot(ox, oy), 1));
-            t = { x: t.x + ox * reach, y: t.y + oy * reach };
-            free = 0;
-          }
+          const free = n.user.groupId === null ? 0 : memberSpread(n.user.groupId);
           const dx = t.x - (n.x ?? 0);
           const dy = t.y - (n.y ?? 0);
           const d = Math.hypot(dx, dy);
@@ -477,7 +467,7 @@ export default function SocialGraph(props: Props) {
           fg.zoom(2.5, ms);
         }
       },
-      fitFocused: (ms = 700) => {
+      fitFocused: (ms = 700, zoomBoost = 1) => {
         // Fit the focused bubbles plus you, without zooming in absurdly far on a single bubble.
         const filter = (n: NodeObject<NodeData>) => {
           const node = n as NodeData;
@@ -493,7 +483,8 @@ export default function SocialGraph(props: Props) {
         const padY = FIT_PAD.y; // room for the top bar and the degrees slider below
         const w = Math.max(box.x[1] - box.x[0], 1);
         const h = Math.max(box.y[1] - box.y[0], 1);
-        const k = Math.min(MAX_FIT_ZOOM, Math.max(MIN_ZOOM, Math.min((size.w - padX * 2) / w, (size.h - padY * 2) / h)));
+        const fit = Math.min((size.w - padX * 2) / w, (size.h - padY * 2) / h);
+        const k = Math.min(MAX_FIT_ZOOM, Math.max(MIN_ZOOM, fit * zoomBoost));
         fg.centerAt((box.x[0] + box.x[1]) / 2, (box.y[0] + box.y[1]) / 2 + 10 / k, ms);
         fg.zoom(k, ms);
       },
@@ -536,7 +527,7 @@ export default function SocialGraph(props: Props) {
       },
       centerOn: (target, leftInset = 0, ms = 700) => {
         holdCamera(ms);
-        // Aim at where the bubble is headed, not where it is: a search match is being moved to the middle of the layout.
+        // Aim at the bubble's layout anchor, which stays stable while its members float inside it.
         const n = "userId" in target ? nodes.get(target.userId) : undefined;
         const groupId = "groupId" in target ? target.groupId : (n?.user.groupId ?? null);
         const p = (groupId !== null && layout.current.anchors.get(groupId)) || (n && { x: n.x ?? 0, y: n.y ?? 0 });
@@ -564,7 +555,7 @@ export default function SocialGraph(props: Props) {
     });
   }, [size.w, size.h, targetFor, nodes, applyCollide, memberSpread, bubbleWorld, bubbleRadius]);
 
-  // ---- layout: focused bubbles in the middle (mine at the center), the rest in a side strip ----
+  // ---- layout: focused bubbles claim the middle; smaller unfocused bubbles flow around them ----
   const focusKey = [...props.focusedGroupIds].sort((a, b) => a - b).join(",");
   // group ids plus head counts, so the layout makes room when a bubble grows
   const groupKey = props.graph.groups.map((g) => `${g.id}:${props.graph.users.filter((u) => u.groupId === g.id).length}`).join(",");
@@ -646,7 +637,8 @@ export default function SocialGraph(props: Props) {
       );
     arrangedFor.current = arrangement;
     if (!keep) {
-      const priority = props.search ? ids.filter((id) => props.search!.groupIds.has(id)) : [];
+      const searchPriority = props.search ? ids.filter((id) => props.search!.groupIds.has(id)) : [];
+      const priority = searchPriority.length ? searchPriority : focused.length < ids.length ? focused : [];
       // The room labels need depends on the zoom the first view lands on, which depends on the layout. Start sized for
       // a close view and zoom the estimate out until the layout fits at the zoom its labels were sized for (labels a
       // little bigger than needed, so the real fit never runs them into anything).
@@ -669,12 +661,6 @@ export default function SocialGraph(props: Props) {
     applyCollide();
     fgRef.current?.d3ReheatSimulation();
   }, [focusKey, groupKey, searchKey, props.myGroupId, props.meId, applyCollide]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // a new set of matched people needs a push so they drift toward the middle (the sim may have cooled)
-  const searchUserKey = props.search ? [...props.search.userIds].sort().join(",") : "";
-  useEffect(() => {
-    fgRef.current?.d3ReheatSimulation();
-  }, [searchUserKey]);
 
   // ---- sync server graph into persistent node/link objects (keeps positions across updates) ----
   useEffect(() => {
@@ -958,6 +944,13 @@ export default function SocialGraph(props: Props) {
     if (n.user.away) alpha *= 0.5;
     if (focus.current && n.user.groupId !== focus.current.groupId && n.id !== meId) alpha *= 1 - f.fade;
     if (alpha <= 0.01) return;
+
+    // Search is a render-only cue: matched people stay inside their bubble and gently jiggle around their real spot.
+    if (hit && propsRef.current.search?.userIds.has(n.id) && motionOK.current) {
+      const a = 3.5 / Math.max(gs, 0.75);
+      x += Math.sin(f.t / 55 + n.phase) * a;
+      y += Math.cos(f.t / 67 + n.phase * 1.3) * a;
+    }
 
     // Trembles while talking (levels come from the room's voice connection).
     const level = scene.levels.get(n.id) ?? 0;

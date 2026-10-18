@@ -13,7 +13,7 @@ export type SearchMatches = { groupIds: Set<number>; userIds: Set<string> };
 
 /**
  * What the map highlights for a search: bubbles and people by name only.
- * Null when the box is empty. Search never hides anything; it only highlights and pulls matches in.
+ * Null when the box is empty. Search never hides anything; people highlight and jiggle without changing position.
  */
 export function searchMatches(query: string, groups: GraphGroup[], users: GraphUser[]): SearchMatches | null {
   const q = query.trim().toLowerCase();

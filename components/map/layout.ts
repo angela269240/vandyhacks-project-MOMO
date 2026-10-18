@@ -2,8 +2,8 @@ import { hashString } from "@/lib/colors";
 
 /**
  * World-space layout for the map.
- * Focused bubbles sit on a square-balanced phyllotaxis layout around the origin, with your current bubble (and you) at the center.
- * Unfocused bubbles line up in a strip to the right, off-screen until you pan sideways.
+ * Bubbles share one square-balanced phyllotaxis layout around the origin. Focused bubbles are placed first in the
+ * middle; smaller unfocused bubbles then fill the space around them instead of being pushed into an off-screen strip.
  */
 
 const SPACING = 340;
@@ -18,9 +18,9 @@ export function spiral(slot: number): Pt2 {
 
 export type Layout = {
   anchors: Map<number, Pt2>;
-  /** radius of the focused cluster, used for the ring of people who aren't in any bubble */
+  /** radius of the complete bubble field, used for the ring of people who aren't in any bubble */
   ringRadius: number;
-  /** first slot is taken by "my" bubble; if I'm in none, slot 0 is left empty for me */
+  /** true when slot 0 is left open for me instead of a bubble */
   centerOnMe: boolean;
 };
 
@@ -114,7 +114,7 @@ function squareFootprints(footprints: Footprint[]): Footprint[] {
 /**
  * Places bubbles along a golden-angle spiral, pushing each one outward until it clears every bubble
  * already placed, so a 40-person bubble gets the room it needs without spreading out the small ones.
- * `priority` bubbles (search matches) take the middle: the first one sits at the center, the rest spiral out first.
+ * `priority` bubbles (filter or search matches) take the middle: the first one sits at the center, the rest spiral out first.
  * `labels` reserves room for each bubble's name above it, and `me` for you (and your name) at the center when
  * you're in no bubble, so no bubble lands on a label, on you, or on the people in no bubble around the outside.
  */
@@ -136,14 +136,17 @@ export function computeLayout(
   };
   const clear = (f: Footprint) => placed.every((o) => footprintsApart(f, o));
 
-  const first = priority.filter((id) => focused.includes(id)).sort((a, b) => a - b);
+  const focusedSet = new Set(focused);
+  const first = priority.filter((id) => focusedSet.has(id)).sort((a, b) => a - b);
   const rest = focused.filter((id) => !first.includes(id)).sort((a, b) => a - b);
-  const ordered = [...first, ...rest];
+  const outer = unfocused.filter((id) => !focusedSet.has(id)).sort((a, b) => a - b);
+  const ordered = [...first, ...rest, ...outer];
   const centerId = first[0] ?? (myGroupId !== null && ordered.includes(myGroupId) ? myGroupId : null);
   if (centerId !== null) ordered.splice(ordered.indexOf(centerId), 1);
   // Slot 0 (the center) is my bubble (or the best search match), or me on my own; everyone else spirals out around it.
   const origin = { x: 0, y: 0 };
-  const centerR = centerId !== null ? clusterRadius(sizes.get(centerId) ?? 1) : me.r;
+  const radiusFor = (id: number) => clusterRadius(sizes.get(id) ?? 1, focusedSet.has(id) ? 1 : unfocusedScale);
+  const centerR = centerId !== null ? radiusFor(centerId) : me.r;
   if (centerId !== null) {
     anchors.set(centerId, origin);
     placed.push(footprint(centerId, origin, centerR));
@@ -152,7 +155,7 @@ export function computeLayout(
   }
 
   ordered.forEach((id, i) => {
-    const r = clusterRadius(sizes.get(id) ?? 1);
+    const r = radiusFor(id);
     const angle = (i + 1) * GOLDEN;
     let dist = centerR + r + LAYOUT_GAP;
     let f = footprint(id, { x: dist * Math.cos(angle), y: dist * Math.sin(angle) }, r);
@@ -171,18 +174,6 @@ export function computeLayout(
   // People in no bubble circle the whole cluster, labels included, with room to spare.
   const extent = Math.max(...placed.map(reach));
   const ringRadius = extent + 160;
-
-  // Unfocused bubbles line up in a strip to the right, off-screen until you pan sideways.
-  let x = ringRadius + 360;
-  [...unfocused]
-    .sort((a, b) => a - b)
-    .forEach((id, i) => {
-      // a long name is wider than its small bubble, so the label sets the spacing
-      const half = Math.max(clusterRadius(sizes.get(id) ?? 1, unfocusedScale), (labels.get(id)?.w ?? 0) / 2);
-      x += half;
-      anchors.set(id, { x, y: (i % 2 ? 1 : -1) * 40 });
-      x += half + 60;
-    });
 
   return { anchors, ringRadius, centerOnMe: centerId === null };
 }
