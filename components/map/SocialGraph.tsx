@@ -214,9 +214,12 @@ export default function SocialGraph(props: Props) {
     return !v || v.has(n.id);
   };
   const isFocused = (n: NodeData) => n.user.groupId === null || propsRef.current.focusedGroupIds.has(n.user.groupId);
-  /** A node wears the hue of the bubble it's displayed in; identity, interests and friendships are untouched. */
+  /**
+   * A node wears the hue of the bubble it's displayed in; identity, interests and friendships are untouched.
+   * Someone who left (away) goes gray while they linger in the bubble.
+   */
   const toneFor = (u: GraphUser): ToneKey => {
-    if (u.groupId === null) return "stone";
+    if (u.groupId === null || u.away) return "stone";
     const g = groups.current.get(u.groupId);
     return g ? groupHue(g) : "stone";
   };
@@ -917,6 +920,8 @@ export default function SocialGraph(props: Props) {
     const rect = wrapRef.current!.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
+  /** A person's hit area is exactly their drawn disc, so the gaps between people still grab the bubble. */
+  const hitRadius = (n: NodeData) => NODE_R * (isFocused(n) ? 1 : UNFOCUSED_SCALE) * (n.id === propsRef.current.meId ? 1.3 : 1);
   const nodeAt = (sx: number, sy: number) => {
     const fg = fgRef.current;
     if (!fg) return null;
@@ -924,8 +929,7 @@ export default function SocialGraph(props: Props) {
     for (const n of [...nodes.values()].reverse()) {
       if (!isVisible(n)) continue;
       const pos = renderPos(n);
-      const scale = isFocused(n) ? 1 : UNFOCUSED_SCALE;
-      const radius = NODE_R * scale * (n.id === propsRef.current.meId ? 1.3 : 1) * 1.2;
+      const radius = hitRadius(n);
       if (Math.hypot(point.x - pos.x, point.y - pos.y) <= radius) return n;
     }
     return null;
@@ -1100,10 +1104,8 @@ export default function SocialGraph(props: Props) {
           nodePointerAreaPaint={(obj, color, ctx) => {
             const n = obj as NodeData;
             const pos = renderPos(n);
-            const scale = isFocused(n) ? 1 : UNFOCUSED_SCALE;
-            const radius = NODE_R * scale * (n.id === propsRef.current.meId ? 1.3 : 1) * 1.2;
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+            ctx.arc(pos.x, pos.y, hitRadius(n), 0, Math.PI * 2);
             ctx.fillStyle = color;
             ctx.fill();
           }}

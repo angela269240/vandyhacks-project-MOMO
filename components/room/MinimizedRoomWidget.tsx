@@ -1,6 +1,6 @@
 "use client";
 
-import { Headphones, LogOut, Maximize2, MessageSquare, Mic, MicOff, WifiOff } from "lucide-react";
+import { LogOut, Maximize2, MessageSquare, Mic, MicOff, WifiOff } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,7 +32,7 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
       ? "You"
       : (graph?.users.find((u) => u.id === speakerId)?.name.split(" ")[0] ?? "Someone");
   const problem = session.status === "failed" || session.status === "reconnecting";
-  const micLabel = voice.micOn ? "Mute" : voice.micJoined ? "Unmute" : "Join voice";
+  const micLabel = voice.micOn ? "Mute" : "Unmute";
 
   return (
     <motion.aside
@@ -79,10 +79,10 @@ export function MinimizedRoomWidget({ onRestore }: { onRestore: () => void }) {
               />
             }
           >
-            {voice.micOn ? <Mic /> : voice.micJoined ? <MicOff /> : <Headphones />}
+            {voice.micOn ? <Mic /> : <MicOff />}
             {micLabel}
           </TooltipTrigger>
-          <TooltipContent>{voice.micOn ? "Mute your microphone" : "Turn on your microphone"}</TooltipContent>
+          <TooltipContent>{voice.micOn ? "Mute your microphone" : "Unmute your microphone"}</TooltipContent>
         </Tooltip>
         <button onClick={onRestore} className={cn(button, "flex-1 bg-foreground/5 text-foreground hover:bg-foreground/10")}>
           <Maximize2 /> Restore
