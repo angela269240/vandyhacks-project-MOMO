@@ -47,7 +47,7 @@ Everyone on the team shares one backend: an OCI Autonomous Database, two Object 
 | `OCI_OS_AVATAR_BUCKET` | `social-mapper-avatars`: public-read bucket (no listing) for `avatars/` | |
 | `OCI_GENAI_MODEL_ID` | `cohere.command-a-03-2025` | OCI Console → Generative AI → Playground |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | LiveKit Cloud project **orbit** | cloud.livekit.io → Settings → API Keys |
-| `CRON_SECRET` | Bearer token Vercel Cron sends to `/api/cron/hourly` | Random string |
+| `CRON_SECRET` | Bearer token Vercel Cron sends to `/api/cron/expire-groups` | Random string |
 | `FAST_CLOCK`, `DEMO_WELCOME_REQUESTS` | Demo toggles (see README) | Leave empty normally |
 | `VERCEL_OIDC_TOKEN` | Added by `vercel link`; only on the owner's machine | Not needed by teammates |
 

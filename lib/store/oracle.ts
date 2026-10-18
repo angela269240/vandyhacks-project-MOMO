@@ -28,7 +28,7 @@ type GroupRow = {
   LAST_EXIT_AT: Date | null;
 };
 
-type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string; SUMMARY: string | null };
+type ChatRow = { GROUP_ID: number; HOUR_START: Date; MESSAGES: ChatMessage[] | string };
 
 const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 
@@ -73,7 +73,7 @@ function toGroup(r: GroupRow): Group {
 
 function toChatHour(r: ChatRow): ChatHour {
   const messages = typeof r.MESSAGES === "string" ? (JSON.parse(r.MESSAGES) as ChatMessage[]) : r.MESSAGES;
-  return { hourStart: iso(r.HOUR_START)!, messages, summary: r.SUMMARY };
+  return { hourStart: iso(r.HOUR_START)!, messages };
 }
 
 const pair = (x: string, y: string) => (x < y ? { a: x, b: y } : { a: y, b: x });
@@ -255,33 +255,12 @@ export const oracleStore: Store = {
   async getChat(groupId, limitHours) {
     const rows = await query<ChatRow>(
       `SELECT * FROM (
-         SELECT group_id, hour_start, JSON_SERIALIZE(messages) AS messages, summary
+         SELECT group_id, hour_start, JSON_SERIALIZE(messages) AS messages
            FROM group_chat_hours WHERE group_id = :g ORDER BY hour_start DESC
        ) WHERE ROWNUM <= :n ORDER BY hour_start`,
       { g: groupId, n: Math.min(limitHours, 10_000) },
     );
     return rows.map(toChatHour);
-  },
-
-  async listUnsummarizedHours(before, minMessages) {
-    const rows = await query<ChatRow>(
-      `SELECT group_id, hour_start, JSON_SERIALIZE(messages) AS messages, summary
-         FROM group_chat_hours
-        WHERE summary IS NULL AND hour_start < :before AND JSON_VALUE(messages, '$.size()') >= :min`,
-      { before: new Date(before), min: minMessages },
-    );
-    return rows.map((r) => ({ groupId: r.GROUP_ID, hour: toChatHour(r) }));
-  },
-
-  async setSummary(groupId, hourStart, summary) {
-    await withConnection(async (conn) => {
-      await conn.execute(`UPDATE group_chat_hours SET summary = :s WHERE group_id = :g AND hour_start = :h`, {
-        s: summary,
-        g: groupId,
-        h: new Date(hourStart),
-      });
-      await conn.commit();
-    });
   },
 
   async expireGroups(now, lingerMs) {

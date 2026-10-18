@@ -1,16 +1,14 @@
 import { handle, json } from "@/lib/api";
 import { broadcastLobby } from "@/lib/events";
-import { summarizeHour } from "@/lib/genai";
 import { archiveJson } from "@/lib/storage";
 import { getStore } from "@/lib/store";
-import { hourStart, lingerMs } from "@/lib/time";
+import { lingerMs } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Vercel Cron (hourly; see vercel.json). Vercel sends `Authorization: Bearer $CRON_SECRET`.
- * 1. Recaps every finished hour bucket with ≥5 messages (OCI GenAI, placeholder for now).
- * 2. Archives and deletes groups that have been empty for the linger window.
+ * Vercel Cron (daily; see vercel.json). Vercel sends `Authorization: Bearer $CRON_SECRET`.
+ * Archives and deletes groups that have been empty for the linger window.
  */
 export const GET = handle(async (req: Request) => {
   const secret = process.env.CRON_SECRET;
@@ -20,15 +18,6 @@ export const GET = handle(async (req: Request) => {
   const store = getStore();
   const now = new Date();
 
-  let summarized = 0;
-  for (const { groupId, hour } of await store.listUnsummarizedHours(hourStart(now), 5)) {
-    const summary = await summarizeHour(hour.messages);
-    if (summary) {
-      await store.setSummary(groupId, hour.hourStart, summary);
-      summarized++;
-    }
-  }
-
   const expired = await store.expireGroups(now, lingerMs());
   for (const { group, chat } of expired) {
     const slug = group.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -36,5 +25,5 @@ export const GET = handle(async (req: Request) => {
     await broadcastLobby({ type: "group_expired", payload: { groupId: group.id } });
   }
 
-  return json({ summarized, expired: expired.map((e) => e.group.name) });
+  return json({ expired: expired.map((e) => e.group.name) });
 });

@@ -55,7 +55,7 @@ function appendChat(hours: ChatHour[], payload: Extract<RoomEvent, { type: "chat
   const { hourStart, message } = payload;
   const existing = hours.find((h) => h.hourStart === hourStart);
   if (existing?.messages.some((m) => m.ts === message.ts && m.userId === message.userId)) return hours;
-  if (!existing) return [...hours, { hourStart, messages: [message], summary: null }];
+  if (!existing) return [...hours, { hourStart, messages: [message] }];
   return hours.map((h) => (h === existing ? { ...h, messages: [...h.messages, message] } : h));
 }
 

@@ -29,8 +29,6 @@ export interface Store {
 
   appendChat(groupId: number, message: ChatMessage, hourStart: string): Promise<void>;
   getChat(groupId: number, limitHours: number): Promise<ChatHour[]>;
-  listUnsummarizedHours(before: string, minMessages: number): Promise<{ groupId: number; hour: ChatHour }[]>;
-  setSummary(groupId: number, hourStart: string, summary: string): Promise<void>;
 
   /** Removes groups with no active members whose last exit is older than the linger window. */
   expireGroups(now: Date, lingerMs: number): Promise<ExpiredGroup[]>;

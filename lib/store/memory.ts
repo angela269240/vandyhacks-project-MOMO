@@ -55,7 +55,7 @@ function seededState(): State {
   for (const f of world.friendships) state.friendships.set(pairKey(f.a, f.b), f);
   for (const c of world.chats) {
     const groupId = c.groupIndex + 1;
-    state.chat.set(chatKey(groupId, c.hourStart), { groupId, hourStart: c.hourStart, messages: c.messages, summary: c.summary });
+    state.chat.set(chatKey(groupId, c.hourStart), { groupId, hourStart: c.hourStart, messages: c.messages });
   }
   return state;
 }
@@ -196,7 +196,7 @@ export const memoryStore: Store = {
     const key = chatKey(groupId, hourStart);
     const bucket = s.chat.get(key);
     if (bucket) bucket.messages.push(message);
-    else s.chat.set(key, { groupId, hourStart, messages: [message], summary: null });
+    else s.chat.set(key, { groupId, hourStart, messages: [message] });
   },
 
   async getChat(groupId, limitHours) {
@@ -204,18 +204,7 @@ export const memoryStore: Store = {
       .filter((c) => c.groupId === groupId)
       .sort((a, b) => a.hourStart.localeCompare(b.hourStart))
       .slice(-limitHours)
-      .map(({ hourStart, messages, summary }) => ({ hourStart, messages: [...messages], summary }));
-  },
-
-  async listUnsummarizedHours(before, minMessages) {
-    return [...state().chat.values()]
-      .filter((c) => c.summary === null && c.hourStart < before && c.messages.length >= minMessages)
-      .map(({ groupId, hourStart, messages, summary }) => ({ groupId, hour: { hourStart, messages, summary } }));
-  },
-
-  async setSummary(groupId, hourStart, summary) {
-    const bucket = state().chat.get(chatKey(groupId, hourStart));
-    if (bucket) bucket.summary = summary;
+      .map(({ hourStart, messages }) => ({ hourStart, messages: [...messages] }));
   },
 
   async expireGroups(now, lingerMs) {

@@ -62,7 +62,7 @@ export type SeedWorld = {
   users: SeedUser[];
   groups: { name: string; color: string; category: string; createdByIndex: number }[];
   friendships: { a: string; b: string; status: "accepted" | "pending"; requestedBy: string }[];
-  chats: { groupIndex: number; hourStart: string; messages: ChatMessage[]; summary: string | null }[];
+  chats: { groupIndex: number; hourStart: string; messages: ChatMessage[] }[];
 };
 
 const idFor = (i: number) => `seed-${String(i + 1).padStart(4, "0")}`;
@@ -233,13 +233,11 @@ export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {})
         "Is the midterm cumulative?",
         "Everything through the observer pattern",
       ]),
-      summary: "The group worked through the visitor pattern (accept() as double dispatch) and confirmed the midterm covers material through the observer pattern.",
     },
     {
       groupIndex: 0,
       hourStart: hourAgo(1),
       messages: msgs(0, 1, ["Practice exam is up on the course page", "Doing problem 3 now, who's in?", "Me, sharing screen in 5"]),
-      summary: null,
     },
     {
       groupIndex: 2,
@@ -251,7 +249,6 @@ export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {})
         "Ok making flashcards for this",
         "Share them please!",
       ]),
-      summary: "A quick Krebs cycle explainer turned into a flashcard-making session, with the deck to be shared with the group.",
     },
   ];
 

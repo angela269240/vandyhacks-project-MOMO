@@ -21,7 +21,6 @@ Open http://localhost:3000. With no env vars it runs entirely locally:
 | Realtime map + chat | Server-Sent Events (single process only) | LiveKit data messages (`LIVEKIT_*`) |
 | Voice / screen share | Your own mic level + local screen preview | LiveKit Cloud rooms |
 | Avatars | Process memory | OCI Object Storage via pre-authenticated URLs (`OCI_*`) |
-| Chat recaps | Placeholder text (`lib/genai.ts`) | Placeholder text, to be wired to OCI Generative AI |
 
 Copy `.env.example` to `.env.local` and fill in what you have.
 
@@ -48,12 +47,12 @@ Create a LiveKit Cloud project, set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKI
 
 ### Deploying to Vercel
 
-Set the same env vars in the Vercel project. `vercel.json` schedules `/api/cron/hourly`, which writes chat recaps and archives
-then deletes groups that have been empty for 24 hours. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single process.
+Set the same env vars in the Vercel project. `vercel.json` schedules `/api/cron/expire-groups` once a day (Hobby plans only allow daily
+crons), which archives then deletes groups that have been empty for 24 hours. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single process.
 
 ## Demo tips
 
-- `FAST_CLOCK=1` shrinks the 24-hour linger to 2 minutes; leave a group, wait, then call `/api/cron/hourly` to watch it fade.
+- `FAST_CLOCK=1` shrinks the 24-hour linger to 2 minutes; leave a group, wait, then call `/api/cron/expire-groups` to watch it fade.
 - New profiles get two friend requests from seeded classmates so the bell has something in it (`DEMO_WELCOME_REQUESTS=0` turns this off).
 - Open two browser windows (one private) to see moves, new friendships and chat appear live.
 
