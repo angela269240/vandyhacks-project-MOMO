@@ -316,9 +316,6 @@ export default function SocialGraph(props: Props) {
     const ids = props.graph.groups.map((g) => g.id);
     const focused = ids.filter((id) => props.focusedGroupIds.has(id));
     const unfocused = ids.filter((id) => !props.focusedGroupIds.has(id));
-    layout.current = computeLayout(focused, unfocused, props.myGroupId);
-    // Bubble colors follow the layout so neighbors differ; shared with the rest of the UI.
-    groupHues.set(assignGroupHues(props.graph.groups, layout.current.anchors, groupHues.get()));
     const sizes = new Map<number, number>();
     for (const u of props.graph.users) if (u.groupId !== null) sizes.set(u.groupId, (sizes.get(u.groupId) ?? 0) + 1);
     layout.current = computeLayout(focused, unfocused, props.myGroupId, sizes, UNFOCUSED_SCALE);
@@ -326,6 +323,9 @@ export default function SocialGraph(props: Props) {
       const anchor = layout.current.anchors.get(id);
       if (anchor) layout.current.anchors.set(id, { x: anchor.x + offset.x, y: anchor.y + offset.y });
     }
+    // Bubble colors come from the unfiltered layout, so neighbors differ and filters never recolor anything.
+    const full = computeLayout(ids, [], props.myGroupId, sizes, UNFOCUSED_SCALE);
+    groupHues.set(assignGroupHues(props.graph.groups, full.anchors, groupHues.get()));
     applyCollide();
     fgRef.current?.d3ReheatSimulation();
   }, [focusKey, groupKey, props.myGroupId, props.meId, applyCollide]); // eslint-disable-line react-hooks/exhaustive-deps

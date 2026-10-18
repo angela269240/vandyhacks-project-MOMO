@@ -5,7 +5,7 @@ import { HUES, hueSimilarity, hueVar, preferredHue, type HueKey } from "@/lib/co
 
 /**
  * Which palette hue each bubble is drawn in. Purely visual: nothing here is stored.
- * The map assigns hues from the current layout so neighboring bubbles look clearly different,
+ * The map assigns hues from the full (unfiltered) layout so neighboring bubbles look clearly different,
  * and every surface that shows a bubble's color (blob, member nodes, room header, lists) reads it from here.
  */
 
@@ -13,7 +13,7 @@ type Pt = { x: number; y: number };
 
 /** spiral neighbors sit ~340 apart; the whole focused cluster (~1000 across) reads as one scene, so reach wide */
 const REACH = 900;
-/** cost of leaving a bubble's current (or preferred) hue: keeps colors steady as filters change */
+/** cost of leaving a bubble's current (or preferred) hue: keeps colors steady as bubbles come and go */
 const STICKY = 0.6;
 
 export function assignGroupHues(
@@ -42,7 +42,7 @@ export function assignGroupHues(
           cost += Math.exp(-((d / REACH) ** 2)) * hueSimilarity(key, o.hue);
         }
       }
-      cost += (uses.get(key) ?? 0) * 0.45; // use the whole palette before repeating a hue
+      cost += (uses.get(key) ?? 0) * 0.7; // outweighs STICKY: use the whole palette before repeating a hue
       if (cost < bestCost) {
         bestCost = cost;
         best = key;
