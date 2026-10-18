@@ -1,45 +1,40 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { RoomContext } from "@livekit/components-react";
+import { Loader2, RotateCw, UserPlus, WifiOff } from "lucide-react";
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
+import { ProfileCard } from "@/components/profile/ProfileCard";
+import { EditProfileSheet } from "@/components/profile/ProfileDialogs";
 import { useGraph } from "@/hooks/useGraph";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMe } from "@/hooks/useMe";
-import { useConfig, useSseChannel } from "@/hooks/useRealtime";
-import { api, fetcher, loadIdentity } from "@/lib/client/api";
-import { scene, sceneEvents } from "@/lib/client/scene";
-import type { ChatHour, Group, RoomEvent } from "@/lib/types";
-import { ChatSheet } from "./ChatSheet";
-import { Dock } from "./Dock";
-import { LiveKitMedia, LocalMedia, type Media } from "./media";
-import { ScreenSharePanel } from "./ScreenSharePanel";
+import { useRoomFriendships } from "@/hooks/useRoomFriendships";
+import { useRoomPresence } from "@/hooks/useRoomPresence";
+import { roomUIState } from "@/hooks/useRoomUIState";
+import { rgba } from "@/lib/colors";
+import { sceneEvents } from "@/lib/client/scene";
+import { INTERESTS } from "@/lib/interests";
+import type { Group, GraphUser } from "@/lib/types";
+import { ChatPanel } from "./ChatPanel";
+import { ParticipantCarousel } from "./ParticipantCarousel";
+import { useRoomConnection } from "./RoomConnection";
+import { RoomDock } from "./RoomDock";
+import { RoomHeader } from "./RoomHeader";
+import type { StageMember } from "./RoomMember";
+import { RoomStage } from "./RoomStage";
+import { ScreenShareStage } from "./ScreenShareStage";
 
-const SCROLL_THRESHOLD = 160; // px of upward scroll to zoom back out to the map
-const HINT_KEY = "sm.hint.scroll";
+const SCROLL_THRESHOLD = 160; // px of upward scroll to minimize back to the map
+const HINT_KEY = "orbit.hint.minimize";
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+const EASE_IN = [0.55, 0, 0.75, 0.3] as const;
+const CARD_W = 300;
 
-const groupApi = (name: string, action: string) => `/api/groups/${encodeURIComponent(name)}/${action}`;
-
-/** Leaving survives unmounts (browser back) and React StrictMode's mount/unmount/mount. */
-let pendingLeave: { name: string; timer: ReturnType<typeof setTimeout> } | null = null;
-
-function sendLeave(name: string, beacon = false) {
-  const identity = loadIdentity();
-  if (!identity) return;
-  const url = groupApi(name, "leave");
-  if (beacon && navigator.sendBeacon) {
-    navigator.sendBeacon(url, new Blob([JSON.stringify(identity)], { type: "application/json" }));
-    return;
-  }
-  fetch(url, {
-    method: "POST",
-    keepalive: true,
-    headers: { "content-type": "application/json", "x-user-id": identity.userId, "x-device-key": identity.deviceKey },
-    body: "{}",
-  }).catch(() => {});
-}
+const sameRoom = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const interestColor = (u: GraphUser) => INTERESTS.find((i) => i.id === u.interestIds[0])?.color ?? "#60A5FA";
 
 /** After a scroll-out commits, swallow trackpad momentum so it doesn't also zoom the map. */
 function swallowWheel(ms: number) {
@@ -51,164 +46,185 @@ function swallowWheel(ms: number) {
   setTimeout(() => window.removeEventListener("wheel", block, { capture: true }), ms);
 }
 
-function appendChat(hours: ChatHour[], payload: Extract<RoomEvent, { type: "chat" }>["payload"]): ChatHour[] {
-  const { hourStart, message } = payload;
-  const existing = hours.find((h) => h.hourStart === hourStart);
-  if (existing?.messages.some((m) => m.ts === message.ts && m.userId === message.userId)) return hours;
-  if (!existing) return [...hours, { hourStart, messages: [message] }];
-  return hours.map((h) => (h === existing ? { ...h, messages: [...h.messages, message] } : h));
-}
-
 /**
- * Inside a bubble. The map underneath *is* the room (zoomed in, everyone where they were);
- * this component only layers the controls on top: header, dock, chat, screen shares, and scroll-out.
+ * The full room screen. The connection itself lives in RoomConnectionProvider, so this page can unmount
+ * (Minimize, browser back) without dropping voice; only the dock's Leave ends participation.
  */
 export function RoomView() {
   const params = useParams<{ name: string }>();
   const name = decodeURIComponent(params.name);
   const router = useRouter();
-  const config = useConfig();
-  const { ready, identity, me } = useMe();
-  const { data: graph, mutate: mutateGraph } = useGraph();
+  const conn = useRoomConnection();
+  const { enter, leave, session, voice } = conn;
+  const { identity, friends } = useMe();
+  const { data: graph } = useGraph();
+  const meId = identity?.userId ?? null;
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const isWide = useMediaQuery("(min-width: 1180px)");
 
-  const [joined, setJoined] = useState<Group | null>(null);
-  const [lkToken, setLkToken] = useState<string | null>(null);
-  const [media, setMedia] = useState<Media | null>(null);
-  const [mediaEnabled, setMediaEnabled] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
-  const [closing, setClosing] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ user: GraphUser; rect: DOMRect } | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [hint, setHint] = useState(false);
   const exiting = useRef(false);
-  const chatOpenRef = useRef(chatOpen);
-  useEffect(() => {
-    chatOpenRef.current = chatOpen;
-  });
+  const overlayRef = useRef<HTMLDivElement>(null);
 
-  // Voice levels feed the map so speakers' circles tremble in place.
-  useEffect(() => {
-    scene.levels = media?.levels.current ?? new Map();
-    return () => {
-      scene.levels = new Map();
-    };
-  }, [media]);
+  // Join (or restore) this room. Switching from another live room happens inside enter().
+  useEffect(() => enter(name), [name, enter]);
 
-  // ---- join (and leave on unmount, e.g. browser back) ----
+  const mine = session && sameRoom(session.name, name) ? session : null;
   useEffect(() => {
-    if (!ready) return;
-    if (!identity) {
-      router.replace("/");
-      return;
-    }
-    if (pendingLeave?.name === name) {
-      clearTimeout(pendingLeave.timer);
-      pendingLeave = null;
-    }
-    let cancelled = false;
-    api<Group>(groupApi(name, "join"), { method: "POST" })
-      .then((g) => {
-        if (cancelled) return;
-        setJoined(g);
-        mutateGraph();
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        toast.error(e.status === 404 ? "That group has faded away" : (e as Error).message);
-        router.replace("/");
-      });
-    const onPageHide = () => sendLeave(name, true);
-    window.addEventListener("pagehide", onPageHide);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("pagehide", onPageHide);
-      if (!exiting.current) {
-        pendingLeave = { name, timer: setTimeout(() => ((pendingLeave = null), sendLeave(name)), 250) };
-      }
-    };
-  }, [ready, identity, name, router, mutateGraph]);
+    if (!mine?.missing) return;
+    toast.error("That group has faded away");
+    leave();
+    router.replace("/");
+  }, [mine?.missing, leave, router]);
 
-  // ---- LiveKit token once we're in ----
-  useEffect(() => {
-    if (!joined || config?.realtime !== "livekit") return;
-    let cancelled = false;
-    api<{ token: string }>("/api/livekit/token", { body: { room: joined.name } })
-      .then((r) => !cancelled && setLkToken(r.token))
-      .catch((e) => toast.error("Voice unavailable", { description: (e as Error).message }));
-    return () => {
-      cancelled = true;
-    };
-  }, [joined, config?.realtime]);
+  // Keep showing the room while the leave animation plays (the session is already gone by then).
+  const [lastGroup, setLastGroup] = useState<Group | null>(null);
+  if (mine?.group && mine.group !== lastGroup) setLastGroup(mine.group);
+  const group = mine?.group ?? (leaving ? lastGroup : null);
 
-  // ---- chat: history from the API, live messages from LiveKit data or SSE ----
-  const chatKey = joined ? groupApi(joined.name, "chat") : null;
-  const { data: hours = [], mutate: mutateChat } = useSWR<ChatHour[]>(chatKey, fetcher, { revalidateOnFocus: false });
-  const onRoomEvent = useCallback(
-    (e: RoomEvent) => {
-      if (e.type !== "chat") return;
-      mutateChat((prev) => appendChat(prev ?? [], e.payload), { revalidate: false });
-      if (!chatOpenRef.current && e.payload.message.userId !== identity?.userId) setUnread((n) => n + 1);
-    },
-    [mutateChat, identity?.userId],
+  // ---- who's here, and how they're connected ----
+  const present = useRoomPresence(group?.id ?? null, { includeMe: !leaving });
+  const presentIds = useMemo(() => present.map((u) => u.id), [present]);
+  const { friendsOf } = useRoomFriendships(presentIds);
+  const myFriends = useMemo(
+    () => new Set([...friends.friends, ...(meId ? (friendsOf.get(meId) ?? []) : [])]),
+    [friends.friends, friendsOf, meId],
   );
-  useSseChannel<RoomEvent>(joined ? `g-${joined.id}` : null, onRoomEvent);
+  const members = useMemo<StageMember[]>(
+    () =>
+      present.map((u) => ({
+        user: u,
+        color: interestColor(u),
+        isMe: u.id === meId,
+        isFriend: u.id !== meId && myFriends.has(u.id),
+        mic:
+          voice.mode === "livekit"
+            ? voice.micStates.has(u.id)
+              ? voice.micStates.get(u.id)
+                ? "on"
+                : "off"
+              : "none"
+            : u.id === meId
+              ? voice.micOn
+                ? "on"
+                : "off"
+              : "none",
+        speaking: voice.speaking.has(u.id),
+        sharing: voice.shares.some((s) => s.ownerId === u.id),
+      })),
+    [present, meId, myFriends, voice],
+  );
 
-  // ---- leaving: you stay in the bubble (as "away"); the view just zooms back out ----
-  const exitRoom = useCallback(
-    (how: "leave" | "scroll" | "esc" | "background") => {
+  const share = voice.shares[0] ?? null;
+  const people = useMemo(() => new Map((graph?.users ?? []).map((u) => [u.id, u])), [graph]);
+  const firstName = (id: string) => (id === meId ? "You" : (people.get(id)?.name.split(" ")[0] ?? "Someone"));
+  const ui = roomUIState({
+    status: mine?.status ?? null,
+    leaving,
+    chatOpen: conn.chatOpen,
+    shareCount: voice.shares.length,
+    memberCount: members.length,
+  });
+  const color = group?.color ?? graph?.groups.find((g) => sameRoom(g.name, name))?.color ?? "#22D3EE";
+
+  // ---- reveal: the room expands out of the bubble the map just zoomed into ----
+  const open = useMotionValue(0);
+  const clipPath = useTransform(open, (v) => `circle(${Math.max(v, 0) * 80}% at 50% 47%)`);
+  const scale = useTransform(open, [0, 1], [0.9, 1]);
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const controls = animate(open, 1, {
+      duration: reduced ? 0 : 0.7,
+      ease: EASE_OUT,
+      onComplete: () => sceneEvents.emit("map-pause"),
+    });
+    return () => {
+      controls.stop();
+      sceneEvents.emit("map-resume");
+    };
+  }, [open]);
+
+  // ---- minimize: the room contracts back into its bubble; the connection stays up ----
+  const minimize = useCallback(
+    async (how: "button" | "scroll" | "esc" = "button") => {
       if (exiting.current) return;
       exiting.current = true;
-      setChatOpen(false);
-      setClosing(true);
-      sendLeave(name);
-      setMediaEnabled(false);
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      setSelected(null);
+      sceneEvents.emit("map-resume");
       if (how === "scroll") swallowWheel(1100);
-      setTimeout(() => router.push("/"), 220);
+      await animate(open, 0, { duration: reduced ? 0 : 0.42, ease: EASE_IN });
+      router.push("/");
     },
-    [name, router],
+    [open, router],
   );
 
-  useEffect(() => {
-    const offExit = sceneEvents.on("exit-room", () => exitRoom("background"));
-    return offExit;
-  }, [exitRoom]);
+  // Clicking the map background while in a room minimizes it (the overlay usually covers the map, but not always).
+  useEffect(() => sceneEvents.on("exit-room", () => minimize()), [minimize]);
 
-  // ---- scroll up (or pinch out) to zoom back out to the map: scrubbed, commits past a threshold ----
+  // ---- leave: media stops and presence ends right away; my node slides out, then the room contracts ----
+  const leaveRoom = useCallback(async () => {
+    if (exiting.current) return;
+    exiting.current = true;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setLeaving(true);
+    setSelected(null);
+    sceneEvents.emit("map-resume");
+    const done = leave();
+    await new Promise((r) => setTimeout(r, reduced ? 0 : 450));
+    await animate(open, 0, { duration: reduced ? 0 : 0.45, ease: EASE_IN });
+    await done;
+    router.push("/");
+  }, [leave, open, router]);
+
+  // ---- scroll up (or pinch out) to minimize: scrubbed, commits past a threshold ----
   useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let acc = 0;
     let idle: ReturnType<typeof setTimeout> | undefined;
+    let revealing = false;
     let pinchStart = 0;
-    const inPanel = (t: EventTarget | null) =>
-      Boolean((t as Element | null)?.closest?.('[data-scroll-region],[data-slot="sheet-content"],[data-slot="dialog-content"]'));
 
     const setProgress = (progress: number) => {
-      if (!reduced) scene.mapApi?.scrub(progress);
-      if (progress >= 1) exitRoom("scroll");
+      if (progress > 0 && !revealing) {
+        revealing = true;
+        sceneEvents.emit("map-resume");
+      }
+      if (!reduced) open.set(1 - progress * 0.45);
+      if (progress >= 1) minimize("scroll");
     };
     const springBack = () => {
       acc = 0;
       pinchStart = 0;
-      if (!exiting.current) scene.mapApi?.scrub(0);
+      if (exiting.current) return;
+      animate(open, 1, { type: "spring", stiffness: 320, damping: 30 });
+      if (revealing) {
+        revealing = false;
+        sceneEvents.emit("map-pause");
+      }
     };
-
     const onWheel = (e: WheelEvent) => {
-      if (inPanel(e.target)) return;
+      if ((e.target as Element | null)?.closest?.("[data-scroll-region]")) return;
       e.preventDefault();
       if (exiting.current) return;
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
       const dy = e.deltaY * unit;
-      // Plain scroll up counts toward exiting (down rewinds). A trackpad pinch arrives as ctrl+wheel,
-      // where deltaY > 0 is the "zoom out" direction.
+      // Plain scroll up counts toward minimizing (down rewinds); a trackpad pinch-out is ctrl+wheel with deltaY > 0.
       const delta = e.ctrlKey ? dy * 4 : -dy;
       acc = Math.max(0, Math.min(SCROLL_THRESHOLD, acc + delta));
       setProgress(acc / SCROLL_THRESHOLD);
       clearTimeout(idle);
       if (!exiting.current) idle = setTimeout(springBack, 250);
     };
-
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2 && !inPanel(e.target)) pinchStart = dist(e.touches);
+      if (e.touches.length === 2) pinchStart = dist(e.touches);
     };
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2 || !pinchStart || exiting.current) return;
@@ -218,140 +234,281 @@ export function RoomView() {
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2 && pinchStart) springBack();
     };
-
-    window.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
-    window.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
     return () => {
       clearTimeout(idle);
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
     };
-  }, [exitRoom]);
+  }, [open, minimize]);
 
-  // Esc zooms back out (unless a sheet, dialog or card is open; those close first).
+  // Esc closes the profile card first, then minimizes (dialogs and popovers handle their own Esc).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (document.querySelector('[data-slot="sheet-content"],[data-slot="dialog-content"]')) return;
-      exitRoom("esc");
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector('[data-slot="sheet-content"],[data-slot="dialog-content"],[data-slot="popover-content"]')) return;
+      if (selected) setSelected(null);
+      else minimize("esc");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [exitRoom]);
+  }, [minimize, selected]);
 
-  // First visit: a gentle "Scroll up to zoom out" hint.
+  // First visit: a short "Scroll up to minimize" hint.
   useEffect(() => {
     try {
       if (localStorage.getItem(HINT_KEY)) return;
       localStorage.setItem(HINT_KEY, "1");
     } catch {}
-    const show = setTimeout(() => setHint(true), 900);
-    const hide = setTimeout(() => setHint(false), 3900);
+    const show = setTimeout(() => setHint(true), 1100);
+    const hide = setTimeout(() => setHint(false), 4600);
     return () => {
       clearTimeout(show);
       clearTimeout(hide);
     };
   }, []);
 
-  const groupId = joined?.id ?? null;
-  const people = useMemo(() => new Map((graph?.users ?? []).map((u) => [u.id, u])), [graph]);
-  const here = (graph?.users ?? []).filter((u) => u.groupId === groupId && u.inRoom).length;
-  const color = joined?.color ?? graph?.groups.find((g) => g.name.toLowerCase() === name.toLowerCase())?.color ?? "#22D3EE";
-  const meId = identity?.userId ?? null;
+  const select = useCallback((user: GraphUser, rect: DOMRect) => setSelected({ user, rect }), []);
+  const cardPos = selected
+    ? {
+        x:
+          selected.rect.right + 12 + CARD_W < window.innerWidth
+            ? selected.rect.right + 12
+            : Math.max(12, selected.rect.left - 12 - CARD_W),
+        y: Math.max(76, Math.min(selected.rect.top - 40, window.innerHeight - 360)),
+      }
+    : null;
+
+  const chatWidth = isWide ? 352 : 312;
+  const chat = group && (
+    <ChatPanel
+      groupName={group.name}
+      hours={conn.hours}
+      people={people}
+      meId={meId}
+      color={color}
+      draft={conn.draft}
+      setDraft={conn.setDraft}
+      onSend={conn.sendChat}
+      onClose={() => conn.setChatOpen(false)}
+    />
+  );
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: closing ? 0 : 1 }}
-      transition={{ duration: 0.25 }}
-      className="pointer-events-none fixed inset-0 z-10"
+      ref={overlayRef}
+      style={{ clipPath, WebkitClipPath: clipPath, scale }}
+      className="fixed inset-0 z-10 touch-none overflow-hidden backdrop-blur-[6px]"
+      onClick={() => setSelected(null)}
     >
-      {/* soft vignette so the bubble reads as a room */}
       <div
         aria-hidden
         className="absolute inset-0"
-        style={{ background: `radial-gradient(ellipse at 50% 50%, transparent 45%, var(--room-veil) 100%)` }}
+        style={{
+          background: `radial-gradient(ellipse at 50% 45%, ${rgba(color, 0.07)}, transparent 55%), radial-gradient(ellipse at 50% 40%, rgba(10,18,48,0.92), rgba(3,5,12,0.96) 70%)`,
+        }}
       />
+      <RoomContext.Provider value={conn.room ?? undefined}>
+        <div className="relative flex h-full flex-col">
+          <RoomHeader
+            name={name}
+            group={group}
+            color={color}
+            members={members}
+            sharerName={share ? firstName(share.ownerId) : null}
+            ui={ui}
+            error={mine?.error ?? null}
+            voiceMode={voice.mode}
+            onRetry={conn.retry}
+            onMinimize={() => minimize("button")}
+            onSelect={select}
+          />
 
-      {mediaEnabled && meId && joined && config?.realtime === "livekit" && config.livekitUrl && lkToken && (
-        <LiveKitMedia serverUrl={config.livekitUrl} token={lkToken} meId={meId} onRoomEvent={onRoomEvent} onChange={setMedia} />
-      )}
-      {mediaEnabled && meId && joined && config?.realtime === "sse" && <LocalMedia meId={meId} onChange={setMedia} />}
+          <div className="flex min-h-0 flex-1">
+            <main className="flex min-w-0 flex-1 flex-col" aria-label="Room">
+              <div className="relative min-h-0 flex-1">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {ui.presenting && share ? (
+                    <motion.div
+                      key="presentation"
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.97 }}
+                      transition={{ duration: 0.3, ease: EASE_OUT }}
+                      className="absolute inset-0 flex flex-col gap-3 px-3 pt-1 sm:px-6"
+                    >
+                      <ScreenShareStage share={share} ownerName={firstName(share.ownerId)} isMine={share.ownerId === meId} color={color} />
+                      <ParticipantCarousel members={members} sharerId={share.ownerId} friendsOf={friendsOf} onSelect={select} />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="radial"
+                      initial={{ opacity: 0, scale: 1.03 }}
+                      animate={{ opacity: ui.phase === "failed" ? 0.45 : 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 1.03 }}
+                      transition={{ duration: 0.3, ease: EASE_OUT }}
+                      className="absolute inset-0"
+                    >
+                      <RoomStage
+                        members={members}
+                        friendsOf={friendsOf}
+                        color={color}
+                        meId={meId}
+                        hoveredId={hoveredId}
+                        onHover={setHoveredId}
+                        onSelect={select}
+                        getLevel={conn.getLevel}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-      <motion.header
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="pointer-events-auto fixed top-4 left-4 z-20 flex items-center gap-2"
-      >
-        <button
-          onClick={() => exitRoom("leave")}
-          className="glass flex h-10 items-center gap-1 rounded-full pr-4 pl-2.5 text-sm text-foreground/85 transition hover:text-foreground"
-        >
-          <ChevronLeft className="size-4" /> Map
-        </button>
-        <div className="glass flex h-10 items-center gap-2.5 rounded-full px-4">
-          <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
-          <span className="max-w-[40vw] truncate font-heading font-semibold">{joined?.name ?? name}</span>
-          {joined && <span className="hidden text-xs text-muted-foreground sm:inline">{joined.category}</span>}
-          <span className="text-xs text-muted-foreground">{here} here</span>
+                <StageNotice ui={ui} error={mine?.error ?? null} onRetry={conn.retry} />
+
+                <AnimatePresence>
+                  {hint && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="glass pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-xs text-foreground/80"
+                    >
+                      Scroll up to minimize · you stay in the room
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* mobile: chat takes part of the stage's height, above the dock */}
+              <AnimatePresence initial={false}>
+                {!isDesktop && ui.chatOpen && (
+                  <motion.section
+                    key="chat-sheet"
+                    aria-label="Chat"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "46dvh", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: EASE_OUT }}
+                    className="glass mx-2 shrink-0 overflow-hidden rounded-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {chat}
+                  </motion.section>
+                )}
+              </AnimatePresence>
+
+              <div className="flex h-[96px] shrink-0 items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                <RoomDock
+                  chatOpen={ui.chatOpen}
+                  unread={conn.unread}
+                  micOn={voice.micOn}
+                  micJoined={voice.micJoined}
+                  screenOn={voice.screenOn}
+                  otherSharer={share && share.ownerId !== meId ? firstName(share.ownerId) : null}
+                  connecting={ui.phase === "connecting" || ui.phase === "reconnecting"}
+                  onChat={() => conn.setChatOpen(!conn.chatOpen)}
+                  onMic={conn.toggleMic}
+                  onScreen={conn.toggleScreen}
+                  onLeave={leaveRoom}
+                />
+              </div>
+            </main>
+
+            {/* desktop: chat is a column; the stage narrows and the bubble eases to its new size */}
+            <AnimatePresence initial={false}>
+              {isDesktop && ui.chatOpen && (
+                <motion.aside
+                  key="chat-panel"
+                  aria-label="Chat"
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: chatWidth, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: EASE_OUT }}
+                  className="shrink-0 overflow-hidden border-l border-white/10 bg-[rgba(8,13,32,0.72)]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="h-full" style={{ width: chatWidth }}>
+                    {chat}
+                  </div>
+                </motion.aside>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-      </motion.header>
+      </RoomContext.Provider>
 
       <AnimatePresence>
-        {hint && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="glass fixed bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full px-4 py-2 text-xs text-foreground/80"
-          >
-            Scroll up to zoom out
+        {selected && cardPos && (
+          <ProfileCard
+            key={selected.user.id}
+            user={people.get(selected.user.id) ?? selected.user}
+            groupName={group?.name}
+            style={{ transform: `translate3d(${cardPos.x}px, ${cardPos.y}px, 0)` }}
+            onClose={() => setSelected(null)}
+            onEditProfile={() => {
+              setSelected(null);
+              setEditOpen(true);
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <EditProfileSheet open={editOpen} onOpenChange={setEditOpen} />
+    </motion.div>
+  );
+}
+
+/** Overlaid status for the stage: joining, alone in the room, or a lost connection with a way back. */
+function StageNotice({
+  ui,
+  error,
+  onRetry,
+}: {
+  ui: ReturnType<typeof roomUIState>;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const content =
+    ui.phase === "failed" ? (
+      <div role="alert" className="glass pointer-events-auto flex items-center gap-3 rounded-2xl px-4 py-3 text-sm">
+        <WifiOff className="size-4 shrink-0 text-[#FBBF24]" aria-hidden />
+        <span>{error ?? "Lost connection to the room."} Your chat draft is kept.</span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRetry();
+          }}
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium transition hover:bg-white/15"
+        >
+          <RotateCw className="size-3.5" aria-hidden /> Reconnect
+        </button>
+      </div>
+    ) : ui.phase === "connecting" || ui.phase === "reconnecting" ? (
+      <div className="glass flex items-center gap-2 rounded-full px-4 py-2 text-xs text-foreground/80" aria-live="polite">
+        <Loader2 className="size-3.5 animate-spin" aria-hidden /> {ui.phase === "reconnecting" ? "Reconnecting…" : "Joining the room…"}
+      </div>
+    ) : ui.alone && !ui.presenting && ui.phase === "live" ? (
+      <div className="glass flex items-center gap-2.5 rounded-2xl px-4 py-2.5 text-sm text-foreground/85">
+        <UserPlus className="size-4 shrink-0 text-[#A78BFA]" aria-hidden />
+        <span>
+          You&apos;re the first one here. Your bubble is glowing on the map, so friends can find you.
+        </span>
+      </div>
+    ) : null;
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center px-4">
+      <AnimatePresence>
+        {content && (
+          <motion.div key={ui.phase + String(ui.alone)} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            {content}
           </motion.div>
         )}
       </AnimatePresence>
-
-      <div className="pointer-events-auto">
-        <AnimatePresence>
-          {media?.screens.map((s, i) => (
-            <ScreenSharePanel key={s.id} share={s} index={i} ownerName={people.get(s.ownerId)?.name ?? me?.name ?? "Someone"} />
-          ))}
-        </AnimatePresence>
-      </div>
-
-      <div className="pointer-events-auto">
-        <Dock
-          chatOpen={chatOpen}
-          unread={unread}
-          micOn={media?.micOn ?? false}
-          screenOn={media?.screenOn ?? false}
-          onChat={() => {
-            setChatOpen((o) => !o);
-            setUnread(0);
-          }}
-          onMic={() => (media ? media.toggleMic() : toast("Connecting voice…"))}
-          onScreen={() => (media ? media.toggleScreen() : toast("Connecting voice…"))}
-          onLeave={() => exitRoom("leave")}
-        />
-      </div>
-
-      {joined && (
-        <ChatSheet
-          open={chatOpen}
-          onOpenChange={(o) => {
-            setChatOpen(o);
-            if (o) setUnread(0);
-          }}
-          groupName={joined.name}
-          hours={hours}
-          people={people}
-          color={color}
-        />
-      )}
-    </motion.div>
+    </div>
   );
 }

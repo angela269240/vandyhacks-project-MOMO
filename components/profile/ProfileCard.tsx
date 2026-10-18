@@ -6,7 +6,7 @@ import { forwardRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useInterests } from "@/hooks/useGraph";
+import { useGraph, useInterests } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api } from "@/lib/client/api";
 import { INTERESTS } from "@/lib/interests";
@@ -40,11 +40,23 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
   ref,
 ) {
   const interests = useInterests();
+  const { data: graph } = useGraph();
   const { me, friends, refreshFriends } = useMe();
   const [busy, setBusy] = useState(false);
   const isMe = me?.id === user.id;
   const mine = new Set(me?.interestIds ?? []);
   const color = INTERESTS.find((i) => i.id === user.interestIds[0])?.color ?? "#60A5FA";
+  const sharedInterests = isMe ? 0 : user.interestIds.filter((id) => mine.has(id)).length;
+
+  // Mutual friends: their accepted friendships that are also mine.
+  const myFriends = new Set(friends.friends);
+  const mutual = isMe
+    ? []
+    : (graph?.edges ?? [])
+        .flatMap((e) => (e.source === user.id ? [e.target] : e.target === user.id ? [e.source] : []))
+        .filter((id, i, all) => myFriends.has(id) && all.indexOf(id) === i)
+        .map((id) => graph?.users.find((u) => u.id === id))
+        .filter((u): u is GraphUser => Boolean(u));
 
   const status = friends.friends.includes(user.id)
     ? "friends"
@@ -118,7 +130,12 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
 
       {user.bio && <p className="mt-3 text-sm leading-relaxed text-foreground/85">{user.bio}</p>}
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      {sharedInterests > 0 && (
+        <p className="mt-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          {sharedInterests} shared interest{sharedInterests === 1 ? "" : "s"}
+        </p>
+      )}
+      <div className={sharedInterests > 0 ? "mt-1.5 flex flex-wrap gap-1.5" : "mt-3 flex flex-wrap gap-1.5"}>
         {user.interestIds.map((id) => {
           const interest = interests.find((i) => i.id === id);
           if (!interest) return null;
@@ -135,6 +152,26 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
           );
         })}
       </div>
+
+      {mutual.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <div className="flex -space-x-1.5">
+            {mutual.slice(0, 3).map((u) => (
+              <Avatar
+                key={u.id}
+                name={u.name}
+                url={u.avatarUrl}
+                color={INTERESTS.find((i) => i.id === u.interestIds[0])?.color ?? "#60A5FA"}
+                size={20}
+                className="ring-2 ring-[#0A1230]"
+              />
+            ))}
+          </div>
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
+            {mutual.length} mutual friend{mutual.length === 1 ? "" : "s"}: {mutual.map((u) => u.name.split(" ")[0]).join(", ")}
+          </p>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         {isMe ? (

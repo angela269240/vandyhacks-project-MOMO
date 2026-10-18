@@ -4,7 +4,11 @@ import { lingerMs } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Not cached: presence and friendship lines must reflect joins/leaves as soon as the lobby event lands
+ * (browsers honor stale-while-revalidate too, which kept rooms seconds behind).
+ */
 export const GET = handle(async () => {
   const graph = await getStore().getGraph(new Date(), lingerMs());
-  return json(graph, { headers: { "cache-control": "public, s-maxage=2, stale-while-revalidate=5" } });
+  return json(graph, { headers: { "cache-control": "no-store" } });
 });

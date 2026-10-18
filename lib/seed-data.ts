@@ -215,6 +215,7 @@ export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {})
     const members = users.filter((u) => u.groupIndex === groupIndex);
     const start = new Date(hourAgo(h)).getTime();
     return lines.map((text, i) => ({
+      id: `seed-${groupIndex}-${h}-${i}`,
       ts: new Date(start + (i + 1) * 4 * 60_000).toISOString(),
       userId: members[i % members.length].id,
       text,

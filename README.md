@@ -38,12 +38,15 @@ npm run db:migrate
 npm run db:seed
 ```
 
-`npm run db:migrate -- --reset` drops and recreates everything.
+`npm run db:migrate -- --reset` drops and recreates everything. A database created before the screen-share slot
+was added needs `npm run db:migrate -- --upgrade` (adds `interest_groups.screen_sharer_id`; safe to re-run).
 
 ### LiveKit
 
 Create a LiveKit Cloud project, set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, and add a webhook pointing to
-`https://<your-deployment>/api/livekit/webhook` so closed tabs leave their rooms.
+`https://<your-deployment>/api/livekit/webhook` so closed tabs leave their rooms and an abandoned screen share frees the
+room's share slot. Without LiveKit, rooms still work for presence and chat, but voice and screen sharing are a local preview
+that only you see.
 
 ### Deploying to Vercel
 
@@ -60,6 +63,10 @@ crons), which archives then deletes groups that have been empty for 24 hours. On
 
 - `app/(map)/layout.tsx` keeps the map mounted; `app/(map)/g/[name]` renders the room as an overlay on top of it.
 - `components/map/SocialGraph.tsx` handles the force graph, blobs, bobbing, glow, hover and focus highlighting.
-- `components/room/RoomView.tsx` handles join/leave, the reveal and scroll-out transitions, the dock, chat and media.
+- `components/room/RoomConnection.tsx` owns the live room (join, LiveKit or local media, chat, screen-share claim). It sits in
+  the `(map)` layout, so **Minimize** (or browser back) returns to the map without disconnecting; only **Leave** ends it.
+- `components/room/RoomView.tsx` is the room screen: header, stage, dock, chat column, and the enter/minimize/leave transitions.
+  `RoomStage.tsx` draws the bubble (`RoomBubble`), friendship lines (`RoomFriendshipEdges`) and people (`RoomMember`) from one
+  animation loop; `ScreenShareStage.tsx` and `ParticipantCarousel.tsx` take over while someone is sharing.
 - `lib/store/` has the `Store` interface with `oracle.ts` and `memory.ts` implementations.
 - `lib/events.ts` fans out lobby and room events through LiveKit or the SSE bus.

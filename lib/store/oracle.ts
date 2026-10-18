@@ -214,7 +214,13 @@ export const oracleStore: Store = {
           WHEN NOT MATCHED THEN INSERT (user_id, group_id) VALUES (s.u, s.g)`,
         { u: userId, g: groupId },
       );
-      if (fromGroupId !== null && fromGroupId !== groupId) await markGroupEmptyIfNoneActive(conn, fromGroupId, now);
+      if (fromGroupId !== null && fromGroupId !== groupId) {
+        await conn.execute(
+          `UPDATE interest_groups SET screen_sharer_id = NULL WHERE id = :g AND screen_sharer_id = :id`,
+          { g: fromGroupId, id: userId },
+        );
+        await markGroupEmptyIfNoneActive(conn, fromGroupId, now);
+      }
       const grp = await conn.execute<GroupRow>(
         `${GROUP_SELECT} WHERE id = :g`,
         { g: groupId },
@@ -232,9 +238,44 @@ export const oracleStore: Store = {
         { now, id: userId, g: groupId },
       );
       if (!res.rowsAffected) return false;
+      await conn.execute(
+        `UPDATE interest_groups SET screen_sharer_id = NULL WHERE id = :g AND screen_sharer_id = :id`,
+        { g: groupId, id: userId },
+      );
       await markGroupEmptyIfNoneActive(conn, groupId, now);
       await conn.commit();
       return true;
+    });
+  },
+
+  async claimScreen(userId, groupId) {
+    return withConnection(async (conn) => {
+      // A single conditional UPDATE is the arbitration: two simultaneous claims can't both match.
+      const res = await conn.execute(
+        `UPDATE interest_groups g SET screen_sharer_id = :id
+          WHERE g.id = :g
+            AND (g.screen_sharer_id IS NULL OR g.screen_sharer_id = :id
+                 OR NOT EXISTS (SELECT 1 FROM users u
+                                 WHERE u.id = g.screen_sharer_id AND u.current_group_id = g.id AND u.in_room = 1))`,
+        { id: userId, g: groupId },
+      );
+      await conn.commit();
+      if (res.rowsAffected) return { granted: true, sharerId: userId };
+      const row = await conn.execute<{ SCREEN_SHARER_ID: string | null }>(
+        `SELECT screen_sharer_id FROM interest_groups WHERE id = :g`,
+        { g: groupId },
+      );
+      return { granted: false, sharerId: row.rows?.[0]?.SCREEN_SHARER_ID ?? null };
+    });
+  },
+
+  async releaseScreen(userId, groupId) {
+    await withConnection(async (conn) => {
+      await conn.execute(`UPDATE interest_groups SET screen_sharer_id = NULL WHERE id = :g AND screen_sharer_id = :id`, {
+        g: groupId,
+        id: userId,
+      });
+      await conn.commit();
     });
   },
 

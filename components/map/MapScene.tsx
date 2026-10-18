@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Plus, UserRound } from "lucide-react";
+import { Bookmark, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
@@ -9,14 +9,17 @@ import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { AddToBookmark } from "@/components/bookmarks/AddToBookmark";
 import { BookmarksPane } from "@/components/bookmarks/BookmarksPane";
+import { OrbitLogo } from "@/components/brand/OrbitLogo";
 import { RequestsBell } from "@/components/friends/RequestsBell";
 import { NewGroupDialog } from "@/components/groups/NewGroupDialog";
 import { Avatar } from "@/components/profile/Avatar";
-import { CreateProfileDialog, EditProfileSheet } from "@/components/profile/ProfileDialogs";
+import { EditProfileSheet } from "@/components/profile/ProfileDialogs";
 import { ProfileCard } from "@/components/profile/ProfileCard";
+import { MinimizedRoomWidget } from "@/components/room/MinimizedRoomWidget";
+import { useRoomConnection } from "@/components/room/RoomConnection";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Button } from "@/components/ui/button";
-import { GRAPH_KEY, useGraph } from "@/hooks/useGraph";
+import { refreshGraph, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
 import { buildChips, type ChipState, passesChips, passesSearch, withinDegrees } from "@/lib/client/filters";
@@ -40,13 +43,13 @@ export function MapScene() {
   const pathname = usePathname();
   const roomName = roomNameFrom(pathname);
   const { data: graph, isLoading } = useGraph();
-  const { ready, identity, me, friends } = useMe();
+  const { identity, me, friends } = useMe();
+  const { session } = useRoomConnection();
   const { mutate } = useSWRConfig();
 
   const apiRef = useRef<MapApi | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
@@ -85,11 +88,14 @@ export function MapScene() {
     return out;
   }, [graph, chips, chipStates, query, bookmarks, visibleUserIds, myGroupId, roomGroupId]);
 
-  // First visit: invite people to make a profile (the map stays visible behind it).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- depends on localStorage being read
-    if (ready && !identity && !roomName) setCreateOpen(true);
-  }, [ready, identity, roomName]);
+    const offPause = sceneEvents.on("map-pause", () => apiRef.current?.pause());
+    const offResume = sceneEvents.on("map-resume", () => apiRef.current?.resume());
+    return () => {
+      offPause();
+      offResume();
+    };
+  }, []);
 
   const onReady = useCallback((api: MapApi) => {
     apiRef.current = api;
@@ -103,8 +109,10 @@ export function MapScene() {
     const fit = (ms: number) => {
       const api = apiRef.current;
       if (!api) return;
-      if (roomGroupId !== null) api.zoomToGroup(roomGroupId, ms);
-      else api.fitFocused(ms);
+      if (roomGroupId !== null) {
+        api.focusGroup(roomGroupId);
+        api.zoomToGroup(roomGroupId, ms);
+      } else api.fitFocused(ms);
     };
     // once quickly, then again after the bubbles have settled into their spots
     const timers = [setTimeout(() => fit(0), 600), setTimeout(() => fit(900), 2400)];
@@ -125,14 +133,18 @@ export function MapScene() {
     prevRoom.current = roomName;
     if (was && !roomName) {
       entering.current = false;
-      apiRef.current?.focusGroup(null);
-      setTimeout(() => apiRef.current?.fitFocused(900), 150);
-      mutate(GRAPH_KEY);
+      const api = apiRef.current;
+      api?.resume();
+      api?.focusGroup(null);
+      if (scene.cameraBeforeRoom) api?.setCamera(scene.cameraBeforeRoom, 800);
+      else setTimeout(() => apiRef.current?.fitFocused(900), 150);
+      scene.cameraBeforeRoom = null;
+      refreshGraph(mutate);
     }
   }, [roomName, mutate]);
 
+  // Entering another group while one is minimized switches rooms (the connection provider handles the hand-over).
   const enterGroup = (group: { id: number; name: string }) => {
-    if (!identity) return setCreateOpen(true);
     if (entering.current) return;
     entering.current = true;
     setSelectedId(null);
@@ -147,10 +159,10 @@ export function MapScene() {
   };
 
   const dropOnGroup = async (group: GraphGroup) => {
-    if (!identity) return setCreateOpen(true);
+    if (!identity) return;
     try {
       await api<Group>(`/api/groups/${encodeURIComponent(group.name)}/join`, { method: "POST" });
-      await mutate(GRAPH_KEY);
+      await refreshGraph(mutate);
       toast.success(`You joined ${group.name}`, { description: "Click the bubble to step inside." });
     } catch (e) {
       toast.error((e as Error).message);
@@ -170,7 +182,7 @@ export function MapScene() {
             meId={meId}
             myGroupId={myGroupId}
             friendIds={friends.friends}
-            selectedId={selectedId}
+            selectedId={onMap ? selectedId : null}
             focusedGroupIds={focusedGroupIds}
             visibleUserIds={visibleUserIds}
             roomGroupId={roomGroupId}
@@ -178,7 +190,7 @@ export function MapScene() {
             onReady={onReady}
             onNodeClick={(u: GraphUser) => setSelectedId((cur) => (cur === u.id ? null : u.id))}
             onGroupClick={(g) => enterGroup(g)}
-            onGroupDoubleClick={(g, at) => (me ? setAddTo({ group: g, at }) : setCreateOpen(true))}
+            onGroupDoubleClick={(g, at) => me && setAddTo({ group: g, at })}
             onBackgroundClick={() => {
               setSelectedId(null);
               if (roomName) sceneEvents.emit("exit-room");
@@ -218,11 +230,11 @@ export function MapScene() {
                 >
                   <Bookmark className="size-[18px]" />
                 </button>
-                <span className="size-2.5 rounded-full bg-[#22D3EE] shadow-[0_0_14px_#22D3EE]" aria-hidden />
+                <OrbitLogo size={28} />
                 <h1 className="font-heading text-lg font-semibold tracking-tight">Orbit</h1>
               </div>
               <div className="pointer-events-auto flex items-center gap-2">
-                {me ? (
+                {me && (
                   <>
                     <Button
                       className="glass h-9 rounded-full px-3.5 text-foreground hover:bg-foreground/10"
@@ -245,12 +257,6 @@ export function MapScene() {
                       />
                     </button>
                   </>
-                ) : (
-                  ready && (
-                    <Button className="h-9 rounded-full px-4" onClick={() => setCreateOpen(true)}>
-                      <UserRound /> Create profile
-                    </Button>
-                  )
                 )}
                 <ThemeSwitch />
               </div>
@@ -291,6 +297,12 @@ export function MapScene() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {onMap && session?.group && (
+          <MinimizedRoomWidget key="mini-room" onRestore={() => session.group && enterGroup(session.group)} />
+        )}
+      </AnimatePresence>
+
       <BookmarksPane
         open={bookmarksOpen && onMap}
         onClose={() => setBookmarksOpen(false)}
@@ -301,13 +313,12 @@ export function MapScene() {
       />
       {addTo && <AddToBookmark group={addTo.group} at={addTo.at} onClose={() => setAddTo(null)} />}
 
-      <CreateProfileDialog open={createOpen} onOpenChange={setCreateOpen} />
       <EditProfileSheet open={editOpen} onOpenChange={setEditOpen} />
       <NewGroupDialog
         open={newGroupOpen}
         onOpenChange={setNewGroupOpen}
         onCreated={async (group) => {
-          await mutate(GRAPH_KEY);
+          await refreshGraph(mutate);
           // give the new blob a beat to appear before flying into it
           setTimeout(() => enterGroup(group), 350);
         }}

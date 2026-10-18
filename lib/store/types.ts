@@ -27,6 +27,14 @@ export interface Store {
   /** Marks the user as out of the room; they keep their group for the linger window. Returns false if they weren't in it. */
   leaveRoom(userId: string, groupId: number, now: Date): Promise<boolean>;
 
+  /**
+   * One screen share per room. Atomically takes the group's share slot if it's free, already ours,
+   * or held by someone no longer in the room. Returns who holds it afterwards.
+   */
+  claimScreen(userId: string, groupId: number): Promise<{ granted: boolean; sharerId: string | null }>;
+  /** Frees the slot if this user holds it. Leaving the room or joining another group frees it too. */
+  releaseScreen(userId: string, groupId: number): Promise<void>;
+
   appendChat(groupId: number, message: ChatMessage, hourStart: string): Promise<void>;
   getChat(groupId: number, limitHours: number): Promise<ChatHour[]>;
 

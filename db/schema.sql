@@ -16,6 +16,8 @@ CREATE TABLE interest_groups (
   created_by    VARCHAR2(36),
   created_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
   last_exit_at  TIMESTAMP WITH TIME ZONE,
+  -- holder of the room's single screen-share slot (Store.claimScreen); no FK, users reference groups
+  screen_sharer_id VARCHAR2(36),
   CONSTRAINT uq_group_name UNIQUE (name_key)
 )
 /

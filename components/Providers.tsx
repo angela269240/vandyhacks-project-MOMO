@@ -4,7 +4,7 @@ import { SWRConfig, useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { GRAPH_KEY } from "@/hooks/useGraph";
+import { refreshGraph } from "@/hooks/useGraph";
 import { MeProvider, useMe } from "@/hooks/useMe";
 import { useLobby } from "@/hooks/useRealtime";
 import { useTheme } from "@/hooks/useTheme";
@@ -13,11 +13,16 @@ import type { LobbyEvent } from "@/lib/types";
 
 /** Applies lobby events: refresh the map, refresh my friend state, toast requests addressed to me. */
 function LobbyListener() {
+  const { signedIn } = useMe();
+  return signedIn ? <SignedInLobbyListener /> : null;
+}
+
+function SignedInLobbyListener() {
   const { mutate } = useSWRConfig();
   const { identity, refreshFriends } = useMe();
 
   useLobby<LobbyEvent>((event) => {
-    mutate(GRAPH_KEY);
+    refreshGraph(mutate);
     const me = identity?.userId;
     switch (event.type) {
       case "user_moved":

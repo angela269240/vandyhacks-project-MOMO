@@ -32,6 +32,9 @@ export type MapApi = {
   zoomToGroup: (groupId: number, ms?: number) => void;
   /** fit the focused bubbles (your bubble ends up near the center) */
   fitFocused: (ms?: number) => void;
+  setCamera: (c: Camera, ms?: number) => void;
+  pause: () => void;
+  resume: () => void;
   getCamera: () => Camera;
   /** fade everything except this group (entering a room) */
   focusGroup: (groupId: number | null) => void;
@@ -215,7 +218,13 @@ export default function SocialGraph(props: Props) {
         fg.centerAt((box.x[0] + box.x[1]) / 2, (box.y[0] + box.y[1]) / 2 + 10 / k, ms);
         fg.zoom(k, ms);
       },
+      setCamera: (c, ms = 800) => {
+        fg.centerAt(c.x, c.y, ms);
+        fg.zoom(c.k, ms);
+      },
       getCamera: () => ({ ...fg.centerAt(), k: fg.zoom() }),
+      pause: () => fg.pauseAnimation(),
+      resume: () => fg.resumeAnimation(),
       focusGroup: (groupId) => (focus.current = groupId === null ? null : { groupId, start: performance.now() }),
       scrub: (progress) => {
         if (progress <= 0) {

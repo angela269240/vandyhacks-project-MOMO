@@ -190,6 +190,48 @@ html.light [data-slot="sheet-overlay"] {
   animation: tag-pulse 2.4s ease-in-out infinite;
 }
 
+/* ---- live room ---- */
+.room-node {
+  transition: opacity 300ms ease;
+}
+/* fill-mode only "backwards": after the fade-in, the inline opacity (hover dimming, leaving) must win */
+.room-node-in {
+  animation-name: room-node-in;
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: backwards;
+}
+.room-node-leaving {
+  transition: opacity 500ms ease;
+  pointer-events: none;
+}
+.room-node-scale {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.room-node:focus-visible .room-node-scale > circle:first-child {
+  stroke: #fff;
+  stroke-width: 3;
+}
+.room-edge-in {
+  animation-name: room-edge-in;
+  animation-duration: 700ms;
+  animation-fill-mode: backwards;
+}
+.room-orbit {
+  animation: room-orbit linear infinite;
+}
+@keyframes room-node-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes room-edge-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes room-orbit {
+  to { transform: rotate(360deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

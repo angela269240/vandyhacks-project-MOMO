@@ -34,10 +34,12 @@ async function toAvatarBlob(file: File): Promise<Blob> {
 export function ProfileForm({
   initial,
   submitLabel,
+  submitClassName,
   onSubmit,
 }: {
   initial?: Partial<ProfileInput>;
   submitLabel: string;
+  submitClassName?: string;
   onSubmit: (values: ProfileFormValues) => Promise<void>;
 }) {
   const interests = useInterests();
@@ -171,8 +173,12 @@ export function ProfileForm({
         {errors.interestIds && <p className="text-xs text-destructive">{errors.interestIds}</p>}
       </div>
 
-      {errors.form && <p className="text-sm text-destructive">{errors.form}</p>}
-      <Button type="submit" size="lg" disabled={submitting} className="mt-1 h-10">
+      {errors.form && (
+        <p role="alert" className="text-sm text-destructive">
+          {errors.form}
+        </p>
+      )}
+      <Button type="submit" size="lg" disabled={submitting} aria-busy={submitting} className={cn("mt-1 h-10", submitClassName)}>
         {submitting && <Loader2 className="animate-spin" />}
         {submitLabel}
       </Button>
