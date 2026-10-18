@@ -79,8 +79,8 @@ async function main() {
 
     for (const c of world.chats) {
       await conn.execute(
-        `INSERT INTO group_chat_hours (group_id, hour_start, messages, summary) VALUES (:g, :h, JSON(:m), :s)`,
-        { g: groupIds[c.groupIndex], h: new Date(c.hourStart), m: JSON.stringify(c.messages), s: c.summary },
+        `INSERT INTO group_chat_hours (group_id, hour_start, messages) VALUES (:g, :h, JSON(:m))`,
+        { g: groupIds[c.groupIndex], h: new Date(c.hourStart), m: JSON.stringify(c.messages) },
       );
     }
 

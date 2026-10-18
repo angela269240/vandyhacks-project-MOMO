@@ -53,7 +53,6 @@ CREATE TABLE group_chat_hours (
   -- LOCAL TIME ZONE: Oracle rejects TIMESTAMP WITH TIME ZONE in a primary key (ORA-02329).
   hour_start  TIMESTAMP WITH LOCAL TIME ZONE,
   messages    JSON NOT NULL,
-  summary     VARCHAR2(1000),
   PRIMARY KEY (group_id, hour_start)
 )
 /
