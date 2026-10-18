@@ -83,7 +83,7 @@ the `/admin` dashboard. Without GenAI, a small keyword-based fallback runs inste
 ### Deploying to Vercel
 
 Set the same environment variables in the Vercel project. `vercel.json` runs moderation daily at 04:00 UTC and group expiry
-daily at 09:00 UTC. The expiry job archives and then deletes groups that have been empty for 24 hours. Set `CRON_SECRET` so
+daily at 09:00 UTC. The expiry job archives and then deletes groups that have been empty for 30 days. Set `CRON_SECRET` so
 the cron routes require Vercel's bearer token. On Vercel, use LiveKit for realtime: the SSE fallback only works in a single
 process.
 

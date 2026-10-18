@@ -236,7 +236,7 @@ export const oracleStore: Store = {
     return this.getUser(id);
   },
 
-  async getGraph(now, lingerMs) {
+  async getGraph(now, linger) {
     const [users, groups, friendships] = await Promise.all([
       query<UserRow>(USER_SELECT),
       query<GroupRow>(GROUP_SELECT),
@@ -247,7 +247,7 @@ export const oracleStore: Store = {
       groups.map(toGroup),
       friendships.map((f) => ({ a: f.USER_A, b: f.USER_B })),
       now,
-      lingerMs,
+      linger,
     );
   },
 
@@ -410,8 +410,8 @@ export const oracleStore: Store = {
     });
   },
 
-  async expireGroups(now, lingerMs) {
-    const cutoff = new Date(now.getTime() - lingerMs);
+  async expireGroups(now, groupLingerMs) {
+    const cutoff = new Date(now.getTime() - groupLingerMs);
     const rows = await query<GroupRow>(
       `${GROUP_SELECT} g
         WHERE last_exit_at < :cutoff

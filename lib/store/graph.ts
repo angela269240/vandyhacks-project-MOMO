@@ -1,18 +1,20 @@
+import type { Linger } from "../time";
 import type { Graph, Group, User } from "../types";
 
 /**
  * Applies the visibility rules shared by both stores:
- * - a group is visible while it has active members, or for the linger window after its last exit
- * - a user sits in their group while in the room, or "away" within the linger window after leaving
+ * - a group is visible while it has active members, or for the group linger window after its last exit
+ * - a user sits in their group while in the room, or "away" within the away window after leaving
  */
 export function buildGraph(
   users: User[],
   groups: Group[],
   friendships: { a: string; b: string }[],
   now: Date,
-  lingerMs: number,
+  linger: Linger,
 ): Graph {
-  const cutoff = now.getTime() - lingerMs;
+  const groupCutoff = now.getTime() - linger.groupMs;
+  const awayCutoff = now.getTime() - linger.awayMs;
   const active = new Map<number, number>();
   for (const u of users) {
     if (u.currentGroupId !== null && u.inRoom) active.set(u.currentGroupId, (active.get(u.currentGroupId) ?? 0) + 1);
@@ -22,12 +24,12 @@ export function buildGraph(
   for (const u of users) for (const gid of u.memberOf) members.set(gid, (members.get(gid) ?? 0) + 1);
 
   const visibleGroups = groups
-    .filter((g) => (active.get(g.id) ?? 0) > 0 || (g.lastExitAt ? new Date(g.lastExitAt).getTime() > cutoff : true))
+    .filter((g) => (active.get(g.id) ?? 0) > 0 || (g.lastExitAt ? new Date(g.lastExitAt).getTime() > groupCutoff : true))
     .map((g) => ({ ...g, activeCount: active.get(g.id) ?? 0, memberCount: members.get(g.id) ?? 0 }));
   const visibleIds = new Set(visibleGroups.map((g) => g.id));
 
   const graphUsers = users.map((u) => {
-    const recentlyLeft = u.leftGroupAt !== null && new Date(u.leftGroupAt).getTime() > cutoff;
+    const recentlyLeft = u.leftGroupAt !== null && new Date(u.leftGroupAt).getTime() > awayCutoff;
     const placed = u.currentGroupId !== null && visibleIds.has(u.currentGroupId) && (u.inRoom || recentlyLeft);
     return {
       id: u.id,

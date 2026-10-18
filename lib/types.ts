@@ -28,7 +28,7 @@ export type Group = {
   lastExitAt: string | null;
 };
 
-/** A user as shown on the map: placed in a group only while active or within the 24h "away" window. */
+/** A user as shown on the map: placed in a group only while active or within the 30-day "away" window. */
 export type GraphUser = Omit<User, "currentGroupId" | "inRoom" | "leftGroupAt" | "bookmarks"> & {
   groupId: number | null;
   inRoom: boolean;

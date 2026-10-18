@@ -55,7 +55,7 @@ export function NewGroupDialog({
         <DialogHeader>
           <DialogTitle className="font-heading text-lg">Start an interest group</DialogTitle>
           <DialogDescription>
-            Anyone can drop in. It fades away 24 hours after the last person leaves.
+            Anyone can drop in. It fades away 30 days after the last person leaves.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">

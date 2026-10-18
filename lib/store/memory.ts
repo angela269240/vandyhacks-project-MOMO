@@ -145,10 +145,10 @@ export const memoryStore: Store = {
     return publicUser(u);
   },
 
-  async getGraph(now, lingerMs) {
+  async getGraph(now, linger) {
     const s = state();
     const friendships = [...s.friendships.values()].filter((f) => f.status === "accepted");
-    return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, lingerMs);
+    return buildGraph([...s.users.values()].map(publicUser), [...s.groups.values()], friendships, now, linger);
   },
 
   async createGroup(name, color, category, createdBy) {
@@ -277,9 +277,9 @@ export const memoryStore: Store = {
     return removed;
   },
 
-  async expireGroups(now, lingerMs) {
+  async expireGroups(now, groupLingerMs) {
     const s = state();
-    const cutoff = now.getTime() - lingerMs;
+    const cutoff = now.getTime() - groupLingerMs;
     const expired = [];
     for (const grp of [...s.groups.values()]) {
       if (activeCount(grp.id) > 0 || !grp.lastExitAt || new Date(grp.lastExitAt).getTime() > cutoff) continue;
