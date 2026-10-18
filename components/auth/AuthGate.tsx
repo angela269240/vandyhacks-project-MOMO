@@ -34,6 +34,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (!ready) return null;
   const showLogin = !signedIn || entering;
 
+  // Once inside (overlay gone), forget the signup step so a later sign-out lands on login, not a stale welcome.
+  if (!showLogin && (welcomeName !== null || backName)) {
+    setWelcomeName(null);
+    setBackName("");
+  }
+
   return (
     <MotionConfig reducedMotion="user">
       {signedIn && (
