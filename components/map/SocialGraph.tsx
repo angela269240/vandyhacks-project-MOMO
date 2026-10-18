@@ -9,7 +9,7 @@ import { HUES, initials, mixHex, rgba, type ToneKey } from "@/lib/colors";
 import { assignGroupHues, groupHue, groupHues } from "@/lib/client/groupHues";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import type { Graph, GraphGroup, GraphUser } from "@/lib/types";
-import { bob, clusterRadius, computeLayout, ringPoint, type Layout } from "./layout";
+import { bob, BUBBLE_PADDING, clusterRadius, computeLayout, ringPoint, type Layout } from "./layout";
 
 /** A palette key plus where it's fading in from, so a change of bubble crossfades instead of snapping. */
 type Tone = { key: ToneKey; from: ToneKey; at: number };
@@ -81,7 +81,6 @@ type Props = {
 
 const NODE_R = 28;
 const UNFOCUSED_SCALE = 0.55;
-const BLOB_PAD = 60;
 const ARRIVED = 60; // members farther than this past their bubble's edge are still travelling
 const DOUBLE_CLICK_MS = 260;
 const TONE_FADE_MS = 700;
@@ -204,7 +203,7 @@ export default function SocialGraph(props: Props) {
   const memberSpread = useCallback(
     (groupId: number) => {
       const scale = propsRef.current.focusedGroupIds.has(groupId) ? 1 : UNFOCUSED_SCALE;
-      return Math.max(0, bubbleRadius(groupId) - (BLOB_PAD + NODE_R) * scale);
+      return Math.max(0, bubbleRadius(groupId) - (BUBBLE_PADDING + NODE_R) * scale);
     },
     [bubbleRadius],
   );
@@ -506,7 +505,7 @@ export default function SocialGraph(props: Props) {
       for (const g of groups.current.values()) {
         const focusedGroup = propsRef.current.focusedGroupIds.has(g.id);
         const scale = focusedGroup ? 1 : UNFOCUSED_SCALE;
-        const pad = BLOB_PAD * scale;
+        const pad = BUBBLE_PADDING * scale;
         // Someone still travelling over from elsewhere joins the blob once they arrive.
         const home = layout.current.anchors.get(g.id) ?? null;
         const all = byGroup.get(g.id) ?? [];
