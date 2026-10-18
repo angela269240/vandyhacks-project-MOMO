@@ -155,7 +155,8 @@ export default function SocialGraph(props: Props) {
   const focus = useRef<{ groupId: number; start: number } | null>(null);
   const pulses = useRef(new Map<number, number>());
   const images = useRef(new Map<string, HTMLImageElement>());
-  const drag = useRef<{ node: NodeData; startX: number; startY: number; moved: boolean } | null>(null);
+  /** `bounded`: someone else's circle, which can be rearranged but never leaves its bubble */
+  const drag = useRef<{ node: NodeData; startX: number; startY: number; moved: boolean; bounded: boolean } | null>(null);
   const groupDrag = useRef<{
     groupId: number;
     startX: number;
@@ -496,7 +497,7 @@ export default function SocialGraph(props: Props) {
 
       const byGroup = new Map<number, NodeData[]>();
       for (const n of nodes.values()) {
-        if (n.user.groupId === null || !isVisible(n) || drag.current?.node === n) continue;
+        if (n.user.groupId === null || !isVisible(n) || (drag.current?.node === n && !drag.current.bounded)) continue;
         if (!byGroup.has(n.user.groupId)) byGroup.set(n.user.groupId, []);
         byGroup.get(n.user.groupId)!.push(n);
       }
@@ -840,9 +841,12 @@ export default function SocialGraph(props: Props) {
         const p = localPoint(e);
         const hitNode = nodeAt(p.x, p.y);
         if (hitNode) {
-          if (hitNode.id !== propsRef.current.meId) return;
-          drag.current = { node: hitNode, startX: e.clientX, startY: e.clientY, moved: false };
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          const isMe = hitNode.id === propsRef.current.meId;
+          // other people only move within their bubble; someone outside every bubble stays put
+          if (!isMe && hitNode.user.groupId === null) return;
+          drag.current = { node: hitNode, startX: e.clientX, startY: e.clientY, moved: false, bounded: !isMe };
+          // others are captured once the drag starts, so a plain click still opens their profile
+          if (isMe) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           return;
         }
         const groupId = groupAt(p.x, p.y);
@@ -872,13 +876,32 @@ export default function SocialGraph(props: Props) {
         const d = drag.current;
         const fg = fgRef.current;
         if (d && fg) {
-          if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 4) d.moved = true;
+          if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 4) {
+            d.moved = true;
+            if (d.bounded) {
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              fg.d3ReheatSimulation(); // so neighbours get nudged aside instead of overlapping
+            }
+          }
           if (d.moved) {
             const p = localPoint(e);
             const g = fg.screen2GraphCoords(p.x, p.y);
-            d.node.fx = d.node.x = g.x;
-            d.node.fy = d.node.y = g.y;
-            hoverGroup.current = groupAt(p.x, p.y);
+            let { x, y } = g;
+            const groupId = d.node.user.groupId;
+            const home = groupId === null ? undefined : layout.current.anchors.get(groupId);
+            if (d.bounded && groupId !== null && home) {
+              // clamp to the free zone the anchor force leaves alone, so the circle stays inside the outline
+              const spread = memberSpread(groupId);
+              const dist = Math.hypot(x - home.x, y - home.y);
+              if (dist > spread) {
+                const k = spread / dist;
+                x = home.x + (x - home.x) * k;
+                y = home.y + (y - home.y) * k;
+              }
+            }
+            d.node.fx = d.node.x = x;
+            d.node.fy = d.node.y = y;
+            hoverGroup.current = d.bounded ? null : groupAt(p.x, p.y);
             wrapRef.current!.style.cursor = "grabbing";
           }
           return;
@@ -916,9 +939,10 @@ export default function SocialGraph(props: Props) {
         }
         const p = localPoint(e);
         hoverGroup.current = inRoom ? null : groupAt(p.x, p.y);
-        const overMe = hoverNode.current?.id === propsRef.current.meId && !inRoom;
-        const overGroup = !hoverNode.current && hoverGroup.current !== null;
-        wrapRef.current!.style.cursor = overMe || overGroup ? "grab" : hoverNode.current ? "pointer" : "";
+        const h = hoverNode.current;
+        const overDraggable = !inRoom && !!h && (h.id === propsRef.current.meId || h.user.groupId !== null);
+        const overGroup = !h && hoverGroup.current !== null;
+        wrapRef.current!.style.cursor = overDraggable || overGroup ? "grab" : h ? "pointer" : "";
       }}
       onPointerUp={(e) => {
         const d = drag.current;
@@ -934,6 +958,13 @@ export default function SocialGraph(props: Props) {
         if (!d || !d.moved) return;
         suppressClick.current = true;
         setTimeout(() => (suppressClick.current = false), 100);
+        if (d.bounded) {
+          // let go: it's already inside its free zone, so the sim leaves it roughly where you put it
+          d.node.fx = d.node.fy = undefined;
+          d.node.vx = d.node.vy = 0;
+          wrapRef.current!.style.cursor = "";
+          return;
+        }
         const p = localPoint(e);
         const id = groupAt(p.x, p.y);
         const g = id === null ? undefined : groups.current.get(id);
