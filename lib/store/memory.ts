@@ -23,7 +23,7 @@ const chatKey = (groupId: number, hour: string) => `${groupId}|${hour}`;
 
 function seededState(): State {
   const now = new Date();
-  const world = buildSeedWorld(now, { crowd: true }); // local demo only: +100 people, two 40-person groups
+  const world = buildSeedWorld(now, { crowd: true }); // local demo only: two 20-person groups, the rest 4-6
   const state: State = { users: new Map(), groups: new Map(), screens: new Map(), friendships: new Map(), chat: new Map(), nextGroupId: 1 };
 
   world.groups.forEach((g) => {
