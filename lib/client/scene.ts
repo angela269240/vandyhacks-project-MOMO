@@ -10,6 +10,7 @@ type Camera = { x: number; y: number; k: number };
 
 type SceneEvents = {
   "pulse-group": number;
+  "exit-room": void;
 };
 
 type Handler<T> = (payload: T) => void;

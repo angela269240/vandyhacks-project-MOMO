@@ -1,4 +1,4 @@
--- Social Mapper schema for OCI Autonomous Database (Oracle 23ai).
+-- Orbit schema for OCI Autonomous Database (Oracle 23ai).
 -- Run with `npm run db:migrate` (statements are split on lines containing only "/").
 
 CREATE TABLE interests (
