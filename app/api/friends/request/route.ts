@@ -1,8 +1,11 @@
 import { z } from "zod";
+import { after } from "next/server";
 import { handle, json } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { broadcastLobby } from "@/lib/events";
 import { getStore } from "@/lib/store";
+
+const AUTO_ACCEPT_DELAY_MS = 1_000;
 
 export const POST = handle(async (req: Request) => {
   const from = await requireUser(req);
@@ -11,7 +14,15 @@ export const POST = handle(async (req: Request) => {
   const store = getStore();
   if (!(await store.getUser(to))) return json({ error: "User not found" }, { status: 404 });
   const status = await store.requestFriend(from, to);
-  if (status === "pending") await broadcastLobby({ type: "friend_requested", payload: { from, to } });
+  if (status === "pending") {
+    await broadcastLobby({ type: "friend_requested", payload: { from, to } });
+    after(async () => {
+      await new Promise((resolve) => setTimeout(resolve, AUTO_ACCEPT_DELAY_MS));
+      if (await store.respondFriend(to, from, true)) {
+        await broadcastLobby({ type: "friend_accepted", payload: { a: from, b: to } });
+      }
+    });
+  }
   if (status === "accepted") await broadcastLobby({ type: "friend_accepted", payload: { a: from, b: to } });
   return json({ status });
 });
