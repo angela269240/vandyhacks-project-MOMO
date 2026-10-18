@@ -20,6 +20,14 @@ const NAMES = [
   "Isla Nguyen", "Caleb Foster", "Amara Diallo", "Owen Patel", "Ruby Alvarez", "Felix Wagner",
   "Nina Petrova", "Theo Grant", "Lucia Fernandez", "Sam Rivera", "Elena Volkova", "Kai Nakamura",
   "Grace Liu", "Diego Santos", "Mila Novak", "Arjun Mehta", "Chloe Dubois", "Jonah Weiss",
+  "Aisha Rahman", "Ben Carter", "Camila Ortiz", "Daniel Cho", "Esther Adeyemi", "Finn Larsen",
+  "Gabriela Silva", "Henry Walsh", "Ines Moreau", "Jae Lee", "Kofi Mensah", "Laila Haddad",
+  "Mateo Garcia", "Naomi Fischer", "Oscar Lindqvist", "Paloma Reyes", "Rahul Iyer", "Sara Cohen",
+  "Tomas Herrera", "Valentina Cruz", "Will Bennett", "Ximena Lopez", "Yusuf Demir", "Zoe Hartman",
+  "Adrian Kowalski", "Bianca Costa", "Connor Hayes", "Deepa Krishnan", "Emeka Obi", "Freya Jensen",
+  "Gideon Shapiro", "Harper Quinn", "Ivan Sokolov", "Jasmine Wu", "Kenji Watanabe", "Lauren Mitchell",
+  "Mohammed Saleh", "Nadia Haider", "Olivia Brennan", "Pedro Alves", "Rosa Delgado", "Simon Ng",
+  "Tessa Morgan", "Victor Huang", "Wendy Osei",
 ];
 
 const BIOS = [
@@ -33,8 +41,22 @@ const BIOS = [
   "Pre-med by day, jazz piano by night.",
   "Runs on oat milk lattes and spaced repetition.",
   "Will trade chess lessons for cooking tips.",
+  "Sophomore, still deciding between econ and CS. Convince me.",
+  "TA for intro bio. Office hours are a vibe, I promise.",
+  "Third floor of the library is my second home.",
+  "Writing a thesis on something nobody asks about at parties.",
+  "Looking for a study buddy who won't let me procrastinate.",
+  "Grad school applications have taken over my life.",
+  "Lab rat by day, intramural runner by night.",
+  "First-gen student, happy to share what I've learned so far.",
+  "I color-code my notes and I'm not sorry.",
+  "Internship hunting. Will review your resume if you review mine.",
 ];
 
+/**
+ * The demo's bubbles: the six original rooms first (the seeded chat history points at them by index), then
+ * college study, career and campus-life groups. Interests must be names from lib/interests.ts.
+ */
 export const SEED_GROUPS = [
   { name: "CS3251 Exam Cram", category: "Academics", interests: ["CS3251", "Hackathons", "Game Dev"] },
   { name: "Badminton Sunday", category: "Sports & Fitness", interests: ["Badminton", "Running", "Rock Climbing"] },
@@ -42,6 +64,25 @@ export const SEED_GROUPS = [
   { name: "Startup Ideas", category: "Career & Startups", interests: ["Startups", "Hackathons", "Debate"] },
   { name: "ML Paper Club", category: "Tech", interests: ["Machine Learning", "Linear Algebra", "Robotics"] },
   { name: "Late Night Chess", category: "Games", interests: ["Chess", "Philosophy", "Jazz"] },
+  { name: "Orgo II Problem Sets", category: "Science", interests: ["Pre-Med", "Baby Bio", "Linear Algebra"] },
+  { name: "Linear Algebra Office Hours", category: "Academics", interests: ["Linear Algebra", "Machine Learning", "Chess"] },
+  { name: "MCAT Prep Circle", category: "Health & Pre-Med", interests: ["Pre-Med", "Baby Bio", "Running"] },
+  { name: "Hackathon Team Finder", category: "Tech", interests: ["Hackathons", "Startups", "Game Dev"] },
+  { name: "Robotics Lab Build Night", category: "Tech", interests: ["Robotics", "Machine Learning", "Hackathons"] },
+  { name: "Philosophy 101 Discussion", category: "Academics", interests: ["Philosophy", "Debate", "Film"] },
+  { name: "Debate Team Practice", category: "Social", interests: ["Debate", "Philosophy", "Spanish"] },
+  { name: "Spanish Conversation Table", category: "Languages & Culture", interests: ["Spanish", "Cooking", "Film"] },
+  { name: "Calc III Study Group", category: "Academics", interests: ["Linear Algebra", "CS3251", "Chess"] },
+  { name: "Physics Lab Report Help", category: "Science", interests: ["Linear Algebra", "Robotics", "Philosophy"] },
+  { name: "Resume & Internship Review", category: "Career & Startups", interests: ["Startups", "Hackathons", "Debate"] },
+  { name: "Thesis Writing Accountability", category: "Academics", interests: ["Philosophy", "Film", "Photography"] },
+  { name: "Coding Interview Prep", category: "Career & Startups", interests: ["CS3251", "Machine Learning", "Hackathons"] },
+  { name: "Film Studies Screening Club", category: "Arts & Media", interests: ["Film", "Photography", "Jazz"] },
+  { name: "Campus Photography Walk", category: "Arts & Media", interests: ["Photography", "Film", "Rock Climbing"] },
+  { name: "Econ 101 Problem Sets", category: "Academics", interests: ["Startups", "Linear Algebra", "Debate"] },
+  { name: "Game Dev Studio", category: "Games", interests: ["Game Dev", "Hackathons", "Jazz"] },
+  { name: "Library Quiet Study Hour", category: "Academics", interests: ["Philosophy", "Chess", "Jazz"] },
+  { name: "Intramural Running Club", category: "Sports & Fitness", interests: ["Running", "Rock Climbing", "Badminton"] },
 ];
 
 export type SeedUser = {
@@ -68,100 +109,41 @@ export type SeedWorld = {
 const idFor = (i: number) => `seed-${String(i + 1).padStart(4, "0")}`;
 const interestId = (name: string) => INTERESTS.find((x) => x.name === name)!.id;
 
-const FIRST = [
-  "Alex", "Bea", "Cam", "Dana", "Eli", "Faye", "Gus", "Hugo", "Iris", "Jade", "Kian", "Lena", "Milo", "Nora",
-  "Omar", "Pia", "Quinn", "Rosa", "Seth", "Tara", "Uma", "Vik", "Wren", "Xavi", "Yara", "Zane",
-];
-const LAST = ["Abbott", "Bishop", "Cruz", "Dutta", "Ellis", "Fong", "Garza", "Haas", "Ito", "Joshi", "Kerr", "Lund"];
+/** How many friendships the world gets: dense-ish within groups, a sprinkle across them. */
+const FRIENDSHIPS = 120;
 
 /**
- * How many people each bubble holds in the local demo, by SEED_GROUPS index. The base world already puts 4-5 people in
- * each group; newcomers top them up. CS3251 Exam Cram and ML Paper Club are the two big "crowd" rooms.
+ * Which group each person sits in: the first SEED_GROUPS.length people one per group (so every bubble has someone),
+ * everyone else spread at random, weighted so some rooms come out bigger than others.
  */
-const GROUP_SIZES = [20, 6, 6, 4, 20, 4];
-const CROWD_GROUPS = [0, 4];
-const CROWD_CORE = 15; // people in each crowd who all know each other
-/** Newcomers who float on the outer ring instead of joining a group. */
-const RING_USERS = 7;
-
-/**
- * Local-demo stress world: newcomers fill each group to GROUP_SIZES, everyone in a group is in the room, and a few more
- * wander the outer ring. In each crowd room, 15 members all know each other, plus one friend among the other 5.
- */
-function addCrowd(world: SeedWorld, r: () => number) {
-  const { users, friendships } = world;
-  const seen = new Set(friendships.map((f) => `${f.a}|${f.b}`));
-  const addEdge = (x: string, y: string) => {
-    const [a, b] = x < y ? [x, y] : [y, x];
-    if (a === b || seen.has(`${a}|${b}`)) return;
-    seen.add(`${a}|${b}`);
-    friendships.push({ a, b, status: "accepted", requestedBy: x });
-  };
-
-  const start = users.length;
-  const extras: SeedUser[] = [];
-  const newcomer = (groupIndex: number | null): SeedUser => {
-    const k = extras.length;
-    const name = `${FIRST[k % FIRST.length]} ${LAST[Math.floor(k / FIRST.length) % LAST.length]}`;
-    const picked = new Set<number>(groupIndex === null ? [] : [interestId(SEED_GROUPS[groupIndex].interests[0])]);
-    const target = 3 + Math.floor(r() * 4);
-    while (picked.size < target) picked.add(1 + Math.floor(r() * INTERESTS.length));
-    const u: SeedUser = {
-      id: idFor(start + k),
-      name,
-      linkedin: `https://www.linkedin.com/in/${name.toLowerCase().replace(/[^a-z]+/g, "-")}`,
-      bio: BIOS[Math.floor(r() * BIOS.length)],
-      interestIds: [...picked].slice(0, 6),
-      groupIndex,
-      memberOf: groupIndex === null ? [] : [groupIndex],
-      inRoom: groupIndex !== null,
-      leftMinutesAgo: null,
-    };
-    extras.push(u);
-    return u;
-  };
-
-  // Everyone already in a group is in the room, so each bubble shows exactly its GROUP_SIZES count.
-  GROUP_SIZES.forEach((size, gi) => {
-    const existing = users.filter((u) => u.groupIndex === gi);
-    for (const u of existing) {
-      u.inRoom = true;
-      u.leftMinutesAgo = null;
-    }
-    for (let i = existing.length; i < size; i++) newcomer(gi);
-  });
-  for (let i = 0; i < RING_USERS; i++) newcomer(null);
-  users.push(...extras);
-
-  // Friendships inside each crowd: a core that all know each other plus one more friend each.
-  for (const gi of CROWD_GROUPS) {
-    const members = users.filter((u) => u.groupIndex === gi);
-    const core = members.slice(0, CROWD_CORE);
-    const rest = members.slice(CROWD_CORE);
-    for (let i = 0; i < core.length; i++) for (let j = i + 1; j < core.length; j++) addEdge(core[i].id, core[j].id);
-    core.forEach((u, i) => addEdge(u.id, rest[i % rest.length].id));
+function assignGroups(count: number, r: () => number): number[] {
+  const groups = SEED_GROUPS.length;
+  const order = Array.from({ length: groups }, (_, i) => i).sort(() => r() - 0.5);
+  const weights = Array.from({ length: groups }, () => 0.4 + r() * 2.6);
+  const total = weights.reduce((a, b) => a + b, 0);
+  const out = order.slice(0, Math.min(groups, count));
+  while (out.length < count) {
+    let x = r() * total;
+    let gi = 0;
+    while ((x -= weights[gi]) > 0) gi++;
+    out.push(Math.min(gi, groups - 1));
   }
-
-  // A few friendships for everyone else so they aren't islands.
-  for (const u of extras) {
-    if (u.groupIndex !== null && CROWD_GROUPS.includes(u.groupIndex)) continue;
-    const pool = users.filter((v) => v.id !== u.id && (u.groupIndex === null || v.groupIndex === u.groupIndex));
-    for (let k = 0; k < 2; k++) addEdge(u.id, pool[Math.floor(r() * pool.length)].id);
-  }
+  return out;
 }
 
-export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {}): SeedWorld {
+export function buildSeedWorld(now = new Date()): SeedWorld {
   const r = rng(42);
   const pick = <T,>(arr: readonly T[]) => arr[Math.floor(r() * arr.length)];
+  const placement = assignGroups(NAMES.length, r);
 
   const users: SeedUser[] = NAMES.map((name, i) => {
-    // 26 of 30 users sit in a group; the rest float on the outer ring.
-    const groupIndex = i < 26 ? i % SEED_GROUPS.length : null;
-    const base = groupIndex === null ? [] : SEED_GROUPS[groupIndex].interests.map(interestId);
+    const groupIndex: number | null = placement[i];
+    const base = SEED_GROUPS[groupIndex].interests.map(interestId);
     const picked = new Set<number>(base.slice(0, 1 + Math.floor(r() * 2)));
     const target = 3 + Math.floor(r() * 4);
     while (picked.size < target) picked.add(1 + Math.floor(r() * INTERESTS.length));
-    const away = groupIndex !== null && r() < 0.15;
+    // the first person placed in each group is always in the room, so no bubble is only gray leftovers
+    const away = i >= SEED_GROUPS.length && r() < 0.15;
     const memberOf = new Set<number>(groupIndex === null ? [] : [groupIndex]);
     if (r() < 0.45) memberOf.add(Math.floor(r() * SEED_GROUPS.length)); // some people belong to a second community
     return {
@@ -190,7 +172,7 @@ export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {})
     friendships.push({ a: x, b: y, status, requestedBy: a });
   };
   // Dense-ish within groups, a sprinkle across groups so the map has bridges.
-  while (friendships.length < 45) {
+  while (friendships.length < FRIENDSHIPS) {
     const u = pick(users);
     const sameGroup = r() < 0.6 && u.groupIndex !== null;
     const candidates = sameGroup ? users.filter((v) => v.groupIndex === u.groupIndex) : users;
@@ -240,7 +222,5 @@ export function buildSeedWorld(now = new Date(), opts: { crowd?: boolean } = {})
     },
   ];
 
-  const world = { users, groups, friendships, chats };
-  if (opts.crowd) addCrowd(world, r);
-  return world;
+  return { users, groups, friendships, chats };
 }
