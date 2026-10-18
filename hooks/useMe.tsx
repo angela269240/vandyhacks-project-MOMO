@@ -16,6 +16,8 @@ type MeContext = {
   setIdentity: (identity: Identity | null) => void;
   /** saves the identity on this device and enters Orbit with it */
   signIn: (identity: Identity) => void;
+  /** ends this tab's session while keeping the saved profile available for the next login */
+  signOut: () => void;
   refreshMe: () => Promise<unknown>;
   /** optimistic local update of my profile (e.g. bookmarks) */
   setMe: (user: User) => void;
@@ -55,6 +57,11 @@ export function MeProvider({ children }: { children: React.ReactNode }) {
     setSession(next.userId);
   }, []);
 
+  const signOut = useCallback(() => {
+    saveSession(null);
+    setSession(null);
+  }, []);
+
   const signedIn = !!identity && session === identity.userId;
 
   const meQuery = useSWR<User>(identity ? `/api/users/${identity.userId}` : null, fetcher, {
@@ -75,12 +82,13 @@ export function MeProvider({ children }: { children: React.ReactNode }) {
       me: identity ? (meQuery.data ?? null) : null,
       setIdentity,
       signIn,
+      signOut,
       refreshMe: () => meQuery.mutate(),
       setMe: (user: User) => void meQuery.mutate(user, { revalidate: false }),
       friends: friendsQuery.data ?? EMPTY_FRIENDS,
       refreshFriends: () => friendsQuery.mutate(),
     }),
-    [ready, identity, signedIn, meQuery, friendsQuery, setIdentity, signIn],
+    [ready, identity, signedIn, meQuery, friendsQuery, setIdentity, signIn, signOut],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
