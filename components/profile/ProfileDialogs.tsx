@@ -36,7 +36,7 @@ export function CreateProfileDialog({ open, onOpenChange }: { open: boolean; onO
             setIdentity(identity);
             mutate(GRAPH_KEY);
             onOpenChange(false);
-            toast.success(`Welcome, ${user.name.split(" ")[0]}!`, { description: "Click a group bubble to step inside." });
+            toast.success(`Welcome, ${user.name.split(" ")[0]}!`, { description: "Click a glowing group to step inside." });
           }}
         />
       </DialogContent>

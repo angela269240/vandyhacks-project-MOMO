@@ -4,7 +4,6 @@ import { Bookmark, Plus, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useBookmarks } from "@/hooks/useBookmarks";
-import { useGroupColor } from "@/lib/client/groupHues";
 import type { GraphGroup } from "@/lib/types";
 
 /** Translucent pane that slides in from the left with your bookmark lists. */
@@ -24,7 +23,6 @@ export function BookmarksPane({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const byId = new Map(groups.map((g) => [g.id, g]));
-  const groupColor = useGroupColor();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +43,7 @@ export function BookmarksPane({
           transition={{ type: "spring", stiffness: 320, damping: 34 }}
           data-scroll-region
           aria-label="Bookmarks"
-          className="glass fixed top-3 bottom-3 left-3 z-40 flex w-[300px] max-w-[calc(100vw-24px)] flex-col rounded-2xl elevated"
+          className="glass fixed top-3 bottom-3 left-3 z-40 flex w-[300px] max-w-[calc(100vw-24px)] flex-col rounded-2xl shadow-2xl shadow-black/30"
         >
           <header className="flex items-center gap-2 px-4 pt-4 pb-2">
             <Bookmark className="size-4" />
@@ -89,7 +87,7 @@ export function BookmarksPane({
                         <div className="mt-2 flex flex-wrap gap-1">
                           {live.map((g) => (
                             <span key={g.id} className="flex items-center gap-1 rounded-full border border-border py-0.5 pr-1 pl-2 text-[11px]">
-                              <span className="size-1.5 rounded-full" style={{ background: groupColor(g) }} />
+                              <span className="size-1.5 rounded-full" style={{ background: g.color }} />
                               {g.name}
                               <button aria-label={`Remove ${g.name}`} onClick={() => toggleGroup(b.id, g.id)} className="rounded-full p-0.5 hover:bg-foreground/10">
                                 <X className="size-2.5" />

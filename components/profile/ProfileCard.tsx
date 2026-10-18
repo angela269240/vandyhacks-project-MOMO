@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useInterests } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api } from "@/lib/client/api";
-import { useGroupColor } from "@/lib/client/groupHues";
-import { identityColor, interestColor } from "@/lib/colors";
+import { INTERESTS } from "@/lib/interests";
 import type { GraphGroup, GraphUser } from "@/lib/types";
 import { Avatar } from "./Avatar";
 
@@ -35,7 +34,7 @@ type Props = {
   style?: React.CSSProperties;
 };
 
-/** Mini profile window. Shared interests are tinted; the map highlights mutual-connection edges while it's open. */
+/** Mini profile window. Shared interests glow; the map highlights mutual-connection edges while it's open. */
 export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCard(
   { user, groupName, communities = [], onClose, onEditProfile, style },
   ref,
@@ -45,7 +44,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
   const [busy, setBusy] = useState(false);
   const isMe = me?.id === user.id;
   const mine = new Set(me?.interestIds ?? []);
-  const groupColor = useGroupColor();
+  const color = INTERESTS.find((i) => i.id === user.interestIds[0])?.color ?? "#60A5FA";
 
   const status = friends.friends.includes(user.id)
     ? "friends"
@@ -85,8 +84,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.94 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="glass elevated relative rounded-2xl p-4"
-      onClick={(e) => e.stopPropagation()}
+      className="glass relative rounded-2xl p-4 shadow-2xl shadow-black/50"
     >
       <button
         aria-label="Close"
@@ -97,7 +95,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
       </button>
 
       <div className="flex items-center gap-3 pr-6">
-        <Avatar name={user.name} url={user.avatarUrl} color={identityColor(user)} size={48} />
+        <Avatar name={user.name} url={user.avatarUrl} color={color} size={48} />
         <div className="min-w-0">
           <div className="truncate font-heading text-base font-semibold">{user.name}</div>
           <div className="truncate text-xs text-muted-foreground">
@@ -111,7 +109,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
           <span className="tracking-wider uppercase">Communities</span>
           {communities.map((g) => (
             <span key={g.id} className="flex items-center gap-1 text-foreground/80">
-              <span className="size-1.5 rounded-full" style={{ background: groupColor(g) }} />
+              <span className="size-1.5 rounded-full" style={{ background: g.color }} />
               {g.name}
             </span>
           ))}
@@ -129,8 +127,8 @@ export const ProfileCard = forwardRef<HTMLDivElement, Props>(function ProfileCar
             <Badge
               key={id}
               variant="outline"
-              className={shared ? "tag-active" : "border-foreground/15 text-muted-foreground"}
-              style={{ "--tag": interestColor(id) } as React.CSSProperties}
+              className={shared ? "tag-glow" : "border-foreground/15 text-muted-foreground"}
+              style={{ "--glow": interest.color } as React.CSSProperties}
             >
               {interest.name}
             </Badge>

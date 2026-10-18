@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/client/api";
-import { identityColor } from "@/lib/colors";
+import { INTERESTS } from "@/lib/interests";
 import type { ChatHour, GraphUser } from "@/lib/types";
 import { Avatar } from "../profile/Avatar";
 
@@ -59,7 +59,7 @@ export function ChatSheet({
       <SheetContent className="w-full gap-0 p-0 sm:max-w-md" data-scroll-region>
         <SheetHeader className="border-b border-foreground/10 p-4">
           <SheetTitle className="flex items-center gap-2 font-heading">
-            <span className="size-2.5 rounded-full" style={{ background: color }} />
+            <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
             {groupName}
           </SheetTitle>
           <SheetDescription>Chat is kept by the hour. Recaps summarize what you missed.</SheetDescription>
@@ -78,7 +78,7 @@ export function ChatSheet({
               </div>
               {h.summary && (
                 <details open className="group mb-3 rounded-xl border border-foreground/10 bg-foreground/[0.04] p-3">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium" style={{ color: `color-mix(in oklab, ${color} 60%, var(--foreground))` }}>
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium" style={{ color }}>
                     <Sparkles className="size-3.5" /> While you were away…
                     <ChevronDown className="ml-auto size-3.5 transition group-open:rotate-180" />
                   </summary>
@@ -88,7 +88,7 @@ export function ChatSheet({
               <ul className="flex flex-col gap-2.5">
                 {h.messages.map((m) => {
                   const who = people.get(m.userId);
-                  const c = identityColor(who ?? { interestIds: [] });
+                  const c = INTERESTS.find((i) => i.id === who?.interestIds[0])?.color ?? "#60A5FA";
                   return (
                     <li key={`${m.ts}-${m.userId}`} className="flex gap-2.5">
                       <Avatar name={who?.name ?? "?"} url={who?.avatarUrl} color={c} size={28} className="mt-0.5" />

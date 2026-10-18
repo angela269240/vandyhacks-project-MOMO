@@ -60,19 +60,19 @@ export function Dock({
                 aria-label={b.label}
                 aria-pressed={b.tone === "danger" ? undefined : Boolean(b.active)}
                 className={cn(
-                  "glass relative flex size-14 items-center justify-center rounded-full transition-[background-color,color,border-color] outline-none focus-visible:ring-3 focus-visible:ring-ring/60 [&_svg]:size-5",
+                  "glass relative flex size-14 items-center justify-center rounded-full transition-[box-shadow,color,border-color] outline-none focus-visible:ring-3 focus-visible:ring-ring/60 [&_svg]:size-5",
                   b.tone === "danger"
-                    ? "text-destructive hover:border-destructive/50 hover:bg-destructive/10"
+                    ? "text-[#FB7185] hover:border-[#FB7185]/60 hover:shadow-[0_0_24px_rgba(251,113,133,0.45)]"
                     : b.active
-                      ? "border-primary/60 bg-primary/15 text-primary"
-                      : "text-foreground/85 hover:bg-foreground/5 hover:text-foreground",
+                      ? "border-[#22D3EE]/70 text-[#22D3EE] shadow-[0_0_24px_rgba(34,211,238,0.5)]"
+                      : "text-foreground/85 hover:text-foreground hover:shadow-[0_0_18px_rgba(120,150,255,0.35)]",
                 )}
               />
             }
           >
             {b.icon}
             {b.badge ? (
-              <span className="absolute -top-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              <span className="absolute -top-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-[#F472B6] text-[10px] font-bold text-black shadow-[0_0_10px_#F472B6]">
                 {b.badge > 9 ? "9+" : b.badge}
               </span>
             ) : null}
