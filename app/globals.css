@@ -92,60 +92,30 @@
 
 /* White mode (toggled from the upper-right switch) */
 html.light {
-  --bg-0: #efe8db;
-  --bg-1: #faf6ee;
-  --surface: rgba(255, 252, 246, 0.84);
-  --text-dim: #6e655a;
+  --bg-0: #e8ecf7;
+  --bg-1: #ffffff;
+  --surface: rgba(255, 255, 255, 0.68);
+  --text-dim: #5a6386;
 
-  --background: #f4eee3;
-  --foreground: #2e2924;
-  --card: rgba(255, 252, 246, 0.9);
-  --card-foreground: #2e2924;
-  --popover: rgba(255, 252, 246, 0.97);
-  --popover-foreground: #2e2924;
-  --primary: #955640;
-  --primary-foreground: #fffaf3;
-  --secondary: rgba(60, 45, 30, 0.06);
-  --secondary-foreground: #2e2924;
-  --muted: rgba(60, 45, 30, 0.05);
-  --muted-foreground: #6e655a;
-  --accent: rgba(60, 45, 30, 0.07);
-  --accent-foreground: #2e2924;
-  --destructive: #a74541;
-  --border: rgba(60, 45, 30, 0.13);
-  --input: rgba(60, 45, 30, 0.18);
-  --ring: rgba(149, 86, 64, 0.45);
-  --sidebar: #faf6ee;
-  --sidebar-foreground: #2e2924;
-  --sidebar-primary: #955640;
-  --sidebar-primary-foreground: #fffaf3;
-  --sidebar-accent: rgba(60, 45, 30, 0.07);
-  --sidebar-accent-foreground: #2e2924;
-  --sidebar-border: rgba(60, 45, 30, 0.13);
-  --sidebar-ring: rgba(149, 86, 64, 0.45);
-  --room-veil: rgba(239, 232, 219, 0.82);
-  --overlay: rgba(60, 45, 30, 0.22);
-
-  --elev-sm: 0 1px 2px rgb(60 40 20 / 0.06);
-  --elev: 0 1px 2px rgb(60 40 20 / 0.06), 0 8px 24px rgb(60 40 20 / 0.1);
-  --grain-opacity: 0.035;
-
-  --hue-sage: #588862;
-  --hue-clay: #a26a57;
-  --hue-slate: #517fa6;
-  --hue-ochre: #937542;
-  --hue-plum: #8f6b97;
-  --hue-teal: #388989;
-  --hue-rose: #a26774;
-  --hue-olive: #798048;
-  --hue-stone: #817970;
-
-  --map-ink: #2e2924;
-  --map-ink-muted: #6e655a;
-  --map-link: #78644f;
-  --map-node-ink: #ffffff;
-  --map-node-edge: #fffaf3;
-  --map-shadow: rgba(60, 40, 20, 0.22);
+  --background: #f3f5fb;
+  --foreground: #0b1230;
+  --card: rgba(255, 255, 255, 0.75);
+  --card-foreground: #0b1230;
+  --popover: rgba(255, 255, 255, 0.92);
+  --popover-foreground: #0b1230;
+  --primary: #0891b2;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(20, 30, 80, 0.06);
+  --secondary-foreground: #0b1230;
+  --muted: rgba(20, 30, 80, 0.05);
+  --muted-foreground: #5a6386;
+  --accent: rgba(20, 30, 80, 0.07);
+  --accent-foreground: #0b1230;
+  --destructive: #e11d48;
+  --border: rgba(20, 30, 80, 0.12);
+  --input: rgba(20, 30, 80, 0.16);
+  --ring: rgba(8, 145, 178, 0.5);
+  --room-veil: rgba(232, 236, 247, 0.85);
   color-scheme: light;
 }
 
@@ -167,34 +137,39 @@ body {
 }
 
 body {
-  background: radial-gradient(ellipse at 50% 40%, var(--bg-1), var(--bg-0) 75%) fixed, var(--bg-0);
+  background: radial-gradient(ellipse at 50% 40%, var(--bg-1), var(--bg-0) 70%) fixed, var(--bg-0);
   color: var(--foreground);
 }
 
-/* Soft frosted surface used by cards, dock and bars */
+/* Frosted glass used by cards, dock and bars */
 .glass {
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: var(--elev-sm);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
 }
 
-@utility elevated {
-  box-shadow: var(--elev);
-}
-
-/* Popovers, dialogs and sheets pick up the same surface */
+/* Popovers, dialogs and sheets pick up the glass look */
 [data-slot="popover-content"],
 [data-slot="dialog-content"],
 [data-slot="sheet-content"] {
-  box-shadow: var(--elev);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
 }
 [data-slot="dialog-overlay"],
 [data-slot="sheet-overlay"] {
-  background: var(--overlay);
+  background: rgba(2, 4, 12, 0.55);
+}
+html.light [data-slot="dialog-overlay"],
+html.light [data-slot="sheet-overlay"] {
+  background: rgba(200, 208, 230, 0.45);
+}
+
+@keyframes aura-drift {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(6vw, -4vh, 0) scale(1.08); }
+  66% { transform: translate3d(-5vw, 5vh, 0) scale(0.95); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 
 @keyframes bob {
@@ -204,11 +179,15 @@ body {
   75% { transform: translate(-0.8px, -1.2px); }
 }
 
-/* A selected / shared interest: tinted chip in that interest's hue (set --tag) */
-.tag-active {
-  border-color: color-mix(in oklab, var(--tag) 75%, transparent) !important;
-  background: color-mix(in oklab, var(--tag) 24%, transparent);
+@keyframes tag-pulse {
+  0%, 100% { box-shadow: 0 0 10px var(--glow), inset 0 0 6px color-mix(in srgb, var(--glow) 35%, transparent); }
+  50% { box-shadow: 0 0 18px var(--glow), inset 0 0 10px color-mix(in srgb, var(--glow) 50%, transparent); }
+}
+
+.tag-glow {
+  border-color: var(--glow) !important;
   color: var(--foreground) !important;
+  animation: tag-pulse 2.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -218,4 +197,8 @@ body {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+html.light {
+  --aura-opacity: 0.16;
 }
