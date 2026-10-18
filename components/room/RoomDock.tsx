@@ -1,6 +1,6 @@
 "use client";
 
-import { Headphones, Loader2, LogOut, MessageSquare, Mic, MicOff, MonitorUp, MonitorX } from "lucide-react";
+import { Loader2, LogOut, MessageSquare, Mic, MicOff, MonitorUp, MonitorX } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -26,7 +26,6 @@ export function RoomDock({
   chatOpen,
   unread,
   micOn,
-  micJoined,
   screenOn,
   otherSharer,
   connecting,
@@ -38,7 +37,6 @@ export function RoomDock({
   chatOpen: boolean;
   unread: number;
   micOn: boolean;
-  micJoined: boolean;
   screenOn: boolean;
   /** first name of someone else who is sharing, if any */
   otherSharer: string | null;
@@ -48,7 +46,6 @@ export function RoomDock({
   onScreen: () => void;
   onLeave: () => void;
 }) {
-  const micLabel = micOn ? "Mute" : micJoined ? "Unmute" : "Join voice";
   const actions: DockAction[] = [
     {
       id: "chat",
@@ -61,9 +58,9 @@ export function RoomDock({
     },
     {
       id: "mic",
-      label: micLabel,
-      hint: connecting ? "Connecting voice…" : micOn ? "Mute your microphone" : micJoined ? "Unmute your microphone" : "Turn on your microphone to talk",
-      icon: connecting ? <Loader2 className="animate-spin" /> : micOn ? <Mic /> : micJoined ? <MicOff /> : <Headphones />,
+      label: micOn ? "Mute" : "Unmute",
+      hint: connecting ? "Connecting voice…" : micOn ? "Mute your microphone" : "Unmute your microphone",
+      icon: connecting ? <Loader2 className="animate-spin" /> : micOn ? <Mic /> : <MicOff />,
       active: micOn,
       blocked: connecting,
       onClick: onMic,

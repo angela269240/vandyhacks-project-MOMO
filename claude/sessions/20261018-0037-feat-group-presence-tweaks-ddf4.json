@@ -1,0 +1,47 @@
+{
+  "id": "20261018-0037-feat-group-presence-tweaks-ddf4",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "feat/group-presence-tweaks",
+  "base": "888cf56",
+  "worktree": "/Users/home/Desktop/repositories/oraclehackathon26/momo-group-tweaks",
+  "started": "2026-10-18T05:37:29.904Z",
+  "ended": "2026-10-18T05:42:18.000Z",
+  "status": "done",
+  "goal": "Group presence tweaks: gray icon after leaving a group, auto-join the meeting muted on enter, drag a group from anywhere inside it except people",
+  "summary": "(1) SocialGraph toneFor() returns 'stone' for away users, so after leaving a group your circle (and anyone else's who left) eases to gray while it lingers in the bubble. (2) Entering a room already connects you to the room's voice (LiveKit) muted; the separate 'Join voice' state (Voice.micJoined, headphones icon) is gone, so the dock and minimized widget show Mute/Unmute from the start. (3) Group drag already existed; a person's hit area was 1.2x their drawn disc, so in a crowded bubble most of the gaps grabbed a person. nodeAt and nodePointerAreaPaint now share hitRadius() = the drawn radius, so any press inside a bubble that isn't on a person drags the bubble.",
+  "claims": [
+    "components/map/SocialGraph.tsx",
+    "components/room/RoomConnection.tsx",
+    "components/room/RoomDock.tsx",
+    "components/room/MinimizedRoomWidget.tsx",
+    "components/room/RoomView.tsx"
+  ],
+  "files_touched": [
+    "components/map/SocialGraph.tsx",
+    "components/room/RoomConnection.tsx",
+    "components/room/RoomDock.tsx",
+    "components/room/MinimizedRoomWidget.tsx",
+    "components/room/RoomView.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    "Removed Voice.micJoined rather than setting it true on join: with everyone joining muted it would always be true while in a room.",
+    "Did not publish a muted mic track on enter: that would prompt for mic permission on every room entry. LiveKit already reports connected participants without a mic as muted ('off'), so others see you as in the meeting and muted."
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass (eslint components/room components/map)",
+    "build": "not run",
+    "manual": "Local in-memory demo on :3117: dragged CS3251 bubble from a gap between members (moved as a group); entered Startup Ideas, dock showed 'Unmute' and my member 'muted'; left the room, my circle turned gray in the bubble. LiveKit mode not tested (no keys)."
+  },
+  "next_steps": [
+    "Test with LiveKit keys: enter a room, confirm you hear others while muted and that the first Unmute prompts for mic permission."
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": []
+}

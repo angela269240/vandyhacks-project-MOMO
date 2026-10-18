@@ -413,7 +413,6 @@ export function RoomView() {
                   chatOpen={ui.chatOpen}
                   unread={conn.unread}
                   micOn={voice.micOn}
-                  micJoined={voice.micJoined}
                   screenOn={voice.screenOn}
                   otherSharer={share && share.ownerId !== meId ? firstName(share.ownerId) : null}
                   connecting={ui.phase === "connecting" || ui.phase === "reconnecting"}

@@ -44,9 +44,8 @@ export type Share = {
 export type Voice = {
   /** "local" = no LiveKit configured: your own mic level and a local screen preview, nothing leaves the browser */
   mode: "livekit" | "local" | null;
+  /** everyone joins a room's voice muted; this is whether the mic is unmuted */
   micOn: boolean;
-  /** has the mic been switched on at least once this session ("Join voice" vs "Unmute") */
-  micJoined: boolean;
   screenOn: boolean;
   /** identity -> publishing an unmuted mic; identities that aren't in the map aren't connected to voice */
   micStates: Map<string, boolean>;
@@ -92,7 +91,6 @@ type RoomConnection = {
 const EMPTY_VOICE: Voice = {
   mode: null,
   micOn: false,
-  micJoined: false,
   screenOn: false,
   micStates: new Map(),
   speaking: new Set(),
@@ -433,7 +431,6 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
       if (!r || sessionRef.current?.status !== "live") return void toast("Connecting voice…");
       try {
         await r.localParticipant.setMicrophoneEnabled(!voice.micOn);
-        setVoice((v) => ({ ...v, micJoined: true }));
         syncFromRoom(r);
       } catch (e) {
         toast.error("Couldn't use your microphone", { description: mediaErrorMessage(e, "microphone") });
@@ -493,7 +490,7 @@ export function RoomConnectionProvider({ children }: { children: React.ReactNode
         localMic.current = null;
         setVoice((v) => ({ ...v, micOn: false, speaking: new Set(), micStates: new Map([[meId, false]]) }));
       });
-      setVoice((v) => ({ ...v, micOn: true, micJoined: true, micStates: new Map([[meId, true]]) }));
+      setVoice((v) => ({ ...v, micOn: true, micStates: new Map([[meId, true]]) }));
       toast("Local preview only", { description: "Add LiveKit keys to talk with others in the room." });
     } catch (e) {
       toast.error("Couldn't use your microphone", { description: mediaErrorMessage(e, "microphone") });
