@@ -1,6 +1,7 @@
 import "server-only";
 import { ZodError } from "zod";
 import { AuthError } from "./auth";
+import { RoomAccessError } from "./rooms";
 
 export const json = (data: unknown, init?: ResponseInit) => Response.json(data, init);
 
@@ -11,6 +12,7 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       return await fn(...args);
     } catch (e) {
       if (e instanceof AuthError) return json({ error: e.message }, { status: 401 });
+      if (e instanceof RoomAccessError) return json({ error: e.message }, { status: 403 });
       if (e instanceof ZodError) return json({ error: e.issues[0]?.message ?? "Invalid input" }, { status: 400 });
       console.error(e);
       return json({ error: "Something went wrong" }, { status: 500 });

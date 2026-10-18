@@ -1,20 +1,38 @@
 "use client";
 
-import { Loader2, SendHorizontal, X } from "lucide-react";
+import { Download, Loader2, NotebookPen, SendHorizontal, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/profile/Avatar";
+import type { NoteTakerStatus } from "@/hooks/useNoteTaker";
+import { api } from "@/lib/client/api";
 import { hueVar, identityColor } from "@/lib/colors";
-import type { ChatHour, GraphUser } from "@/lib/types";
+import type { ChatHour, GraphUser, GroupNotes } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { messageKey } from "./RoomConnection";
+import { NotesPanel, downloadNotes } from "./NotesPanel";
+import { groupApi, messageKey } from "./RoomConnection";
 
 const hourLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
+const iconButton =
+  "rounded-md p-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35";
+
+export type ChatNotes = {
+  notes: GroupNotes | undefined;
+  save: (content: string, version: number) => Promise<GroupNotes>;
+  refresh: () => void;
+  notetakingOn: boolean;
+  setNotetakingOn: (on: boolean) => void;
+  status: NoteTakerStatus;
+  micOn: boolean;
+};
+
 /**
  * Room chat: hour buckets and a composer (Enter sends, Shift+Enter is a newline).
  * The draft lives in the room connection, so it survives minimizing and reconnects.
+ * The notebook button at the bottom swaps the messages for the room's notes; the header downloads them,
+ * and the sparkle button summarizes the last 100 messages.
  */
 export function ChatPanel({
   groupName,
@@ -26,6 +44,8 @@ export function ChatPanel({
   setDraft,
   onSend,
   onClose,
+  notes,
+  canSummarize,
 }: {
   groupName: string;
   hours: ChatHour[];
@@ -36,8 +56,13 @@ export function ChatPanel({
   setDraft: (text: string) => void;
   onSend: (text: string) => Promise<void>;
   onClose: () => void;
+  notes: ChatNotes;
+  canSummarize: boolean;
 }) {
   const [sending, setSending] = useState(false);
+  const [view, setView] = useState<"chat" | "notes">("chat");
+  const [summary, setSummary] = useState<{ text: string; count: number } | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const count = hours.reduce((n, h) => n + h.messages.length, 0);
@@ -49,6 +74,14 @@ export function ChatPanel({
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [count]);
   useEffect(() => inputRef.current?.focus({ preventScroll: true }), []);
+  // The message list remounts when coming back from the notes: start at the latest message, or at a new summary.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && view === "chat") el.scrollTop = el.scrollHeight;
+  }, [view]);
+  useEffect(() => {
+    if (summary && listRef.current) listRef.current.scrollTop = 0;
+  }, [summary]);
 
   // Grow the composer with its content, up to about five lines.
   useEffect(() => {
@@ -73,66 +106,126 @@ export function ChatPanel({
     }
   };
 
+  const summarize = async () => {
+    if (summarizing) return;
+    setSummarizing(true);
+    try {
+      const res = await api<{ summary: string | null; count: number }>(groupApi(groupName, "summary"), { method: "POST" });
+      if (!res.summary) return void toast("Nothing to summarize yet");
+      setSummary({ text: res.summary, count: res.count });
+      setView("chat");
+    } catch (err) {
+      toast.error("Couldn't summarize", { description: (err as Error).message });
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  const notesContent = notes.notes?.content ?? "";
+  const listening = notes.status === "listening";
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-scroll-region>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
         <span className="size-2 rounded-full" style={{ background: color }} aria-hidden />
-        <h2 className="font-heading text-sm font-semibold">Chat</h2>
+        <h2 className="font-heading text-sm font-semibold">{view === "notes" ? "Notes" : "Chat"}</h2>
         <span className="truncate text-xs text-muted-foreground">{groupName}</span>
-        <button
-          onClick={onClose}
-          aria-label="Close chat"
-          className="ml-auto rounded-md p-1 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
-        >
-          <X className="size-4" />
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {canSummarize && (
+            <button
+              onClick={summarize}
+              disabled={summarizing || count === 0}
+              aria-label="Summarize the last 100 messages"
+              title="Summarize the last 100 messages"
+              className={iconButton}
+            >
+              {summarizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            </button>
+          )}
+          <button
+            onClick={() => downloadNotes(groupName, notesContent)}
+            disabled={!notesContent.trim()}
+            aria-label="Download notes"
+            title="Download notes"
+            className={iconButton}
+          >
+            <Download className="size-4" />
+          </button>
+          <button onClick={onClose} aria-label="Close chat" className={iconButton}>
+            <X className="size-4" />
+          </button>
+        </div>
       </header>
 
-      <div
-        ref={listRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-        }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-2"
-        role="log"
-        aria-live="polite"
-        aria-label="Messages"
-      >
-        {hours.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No messages yet. Say hi!</p>}
-        {hours.map((h) => (
-          <section key={h.hourStart} className="mb-3">
-            <div className="my-3 flex items-center gap-3 text-[10px] tracking-wider text-muted-foreground uppercase">
-              <span className="h-px flex-1 bg-border" />
-              {hourLabel(h.hourStart)}
-              <span className="h-px flex-1 bg-border" />
-            </div>
-            <ul className="flex flex-col gap-3">
-              {h.messages.map((m) => {
-                const who = people.get(m.userId);
-                const c = who ? identityColor(who) : hueVar("stone");
-                const mine = m.userId === meId;
-                return (
-                  <li key={messageKey(m)} className="flex gap-2.5">
-                    <Avatar name={who?.name ?? "?"} url={who?.avatarUrl} color={c} size={28} className="mt-0.5" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className={cn("truncate text-sm font-medium", mine && "text-primary")}>
-                          {mine ? "You" : (who?.name ?? "Someone")}
-                        </span>
-                        <time dateTime={m.ts} className="shrink-0 text-[11px] text-muted-foreground">
-                          {timeLabel(m.ts)}
-                        </time>
+      {view === "notes" ? (
+        <NotesPanel
+          notes={notes.notes}
+          onSave={notes.save}
+          onRefresh={notes.refresh}
+          notetakingOn={notes.notetakingOn}
+          setNotetakingOn={notes.setNotetakingOn}
+          status={notes.status}
+          micOn={notes.micOn}
+        />
+      ) : (
+        <div
+          ref={listRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          }}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-2"
+          role="log"
+          aria-live="polite"
+          aria-label="Messages"
+        >
+          {summary && (
+            <section className="mt-2 mb-3 rounded-xl border border-border bg-foreground/[0.04] px-3 py-2.5" aria-label="Summary">
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] tracking-wider text-muted-foreground uppercase">
+                <Sparkles className="size-3" />
+                Summary of the last {summary.count} messages
+                <button onClick={() => setSummary(null)} aria-label="Dismiss summary" className={cn(iconButton, "ml-auto p-0.5")}>
+                  <X className="size-3" />
+                </button>
+              </div>
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90">{summary.text}</p>
+            </section>
+          )}
+          {hours.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No messages yet. Say hi!</p>}
+          {hours.map((h) => (
+            <section key={h.hourStart} className="mb-3">
+              <div className="my-3 flex items-center gap-3 text-[10px] tracking-wider text-muted-foreground uppercase">
+                <span className="h-px flex-1 bg-border" />
+                {hourLabel(h.hourStart)}
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <ul className="flex flex-col gap-3">
+                {h.messages.map((m) => {
+                  const who = people.get(m.userId);
+                  const c = who ? identityColor(who) : hueVar("stone");
+                  const mine = m.userId === meId;
+                  return (
+                    <li key={messageKey(m)} className="flex gap-2.5">
+                      <Avatar name={who?.name ?? "?"} url={who?.avatarUrl} color={c} size={28} className="mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className={cn("truncate text-sm font-medium", mine && "text-primary")}>
+                            {mine ? "You" : (who?.name ?? "Someone")}
+                          </span>
+                          <time dateTime={m.ts} className="shrink-0 text-[11px] text-muted-foreground">
+                            {timeLabel(m.ts)}
+                          </time>
+                        </div>
+                        <p className="text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground/90">{m.text}</p>
                       </div>
-                      <p className="text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground/90">{m.text}</p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
-      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -141,6 +234,20 @@ export function ChatPanel({
         }}
         className="flex shrink-0 items-end gap-2 border-t border-border p-3"
       >
+        <button
+          type="button"
+          onClick={() => setView((v) => (v === "notes" ? "chat" : "notes"))}
+          aria-label={view === "notes" ? "Back to chat" : "Open notes"}
+          aria-pressed={view === "notes"}
+          title={listening ? "Notes (AI is listening)" : "Notes"}
+          className={cn(
+            "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+            view === "notes" && "bg-foreground/10 text-foreground",
+          )}
+        >
+          <NotebookPen className="size-4" />
+          {listening && <span className="absolute top-2 right-2 size-1.5 animate-pulse rounded-full bg-(--hue-sage)" aria-hidden />}
+        </button>
         <textarea
           ref={inputRef}
           value={draft}

@@ -67,4 +67,13 @@ export type LobbyEvent =
   | { type: "friend_requested"; payload: { from: string; to: string } }
   | { type: "friend_accepted"; payload: { a: string; b: string } };
 
-export type RoomEvent = { type: "chat"; payload: { hourStart: string; message: ChatMessage } };
+/**
+ * A room's shared notes file. AI notetaking puts scheduled events at the top and topic facts at the bottom,
+ * one line each; anyone in the room can also edit it by hand. The whole file is deleted at `expiresAt`.
+ */
+export type GroupNotes = { content: string; version: number; createdAt: string; updatedAt: string; expiresAt: string };
+
+/** Notes events carry only the version: the file can outgrow a LiveKit data packet, so clients refetch. */
+export type RoomEvent =
+  | { type: "chat"; payload: { hourStart: string; message: ChatMessage } }
+  | { type: "notes"; payload: { version: number } };

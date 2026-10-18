@@ -297,6 +297,16 @@ export function RoomView() {
       setDraft={conn.setDraft}
       onSend={conn.sendChat}
       onClose={() => conn.setChatOpen(false)}
+      canSummarize={conn.ai.summary}
+      notes={{
+        notes: conn.notes,
+        save: conn.saveNotes,
+        refresh: conn.refreshNotes,
+        notetakingOn: conn.notetakingOn,
+        setNotetakingOn: conn.setNotetakingOn,
+        status: conn.noteTaker,
+        micOn: conn.voice.micOn,
+      }}
     />
   );
 

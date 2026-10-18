@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CATEGORIES } from "./categories";
 import { INTERESTS } from "./interests";
+import { MAX_NOTES_CHARS } from "./notes";
 
 const optionalText = (max: number) =>
   z
@@ -58,3 +59,15 @@ export const groupNameSchema = z
   .regex(/^[^/\\?#%]+$/, "Name can't contain / \\ ? # or %");
 
 export const chatSchema = z.object({ text: z.string().trim().min(1).max(1000) });
+
+/** A manual edit replaces the whole file; `version` is what the editor started from, to catch overwrites. */
+export const notesSaveSchema = z.object({
+  content: z.string().max(MAX_NOTES_CHARS, "Notes are too long"),
+  version: z.number().int().min(0),
+});
+
+/** A stretch of transcribed speech for AI notetaking. Classified, then dropped; never stored. */
+export const transcriptSchema = z.object({
+  text: z.string().trim().min(1).max(2000),
+  timeZone: z.string().max(64).optional(),
+});

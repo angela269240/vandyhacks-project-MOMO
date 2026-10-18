@@ -58,6 +58,16 @@ CREATE TABLE group_chat_hours (
   PRIMARY KEY (group_id, hour_start)
 )
 /
+-- A room's shared notes file (lib/notes.ts): AI-added and hand-edited lines, deleted 60 days after it was created.
+CREATE TABLE group_notes (
+  group_id    NUMBER PRIMARY KEY REFERENCES interest_groups(id) ON DELETE CASCADE,
+  content     CLOB,
+  version     NUMBER DEFAULT 1 NOT NULL,
+  created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+  updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+  expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+)
+/
 CREATE TABLE friendships (
   user_a       VARCHAR2(36) REFERENCES users(id) ON DELETE CASCADE,
   user_b       VARCHAR2(36) REFERENCES users(id) ON DELETE CASCADE,
