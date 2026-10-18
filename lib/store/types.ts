@@ -1,4 +1,4 @@
-import type { Bookmark, ChatHour, ChatMessage, FriendState, Graph, Group, GroupNotes, Interest, ProfileInput, User } from "../types";
+import type { Bookmark, ChatHour, ChatMessage, FriendState, Graph, Group, GroupNotes, Interest, ProfileInput, Report, User } from "../types";
 
 export type UserPatch = Partial<ProfileInput> & { bookmarks?: Bookmark[] };
 
@@ -9,13 +9,20 @@ export type ExpiredGroup = { group: Group; chat: ChatHour[] };
 /** Where an AI note goes: scheduled events at the start of the file, topic facts at the end. */
 export type NotePosition = "start" | "end";
 
+/** A report before it's stored. `key` identifies the flagged text, so the same text is only reported once. */
+export type NewReport = Omit<Report, "id" | "createdAt"> & { key: string };
+
+/** Outcome of checking an emailed code. */
+export type CodeCheck = "ok" | "wrong" | "missing";
+
 /** Everything the API needs from persistence. Implemented by the Oracle store and the in-memory fallback. */
 export interface Store {
   readonly kind: "oracle" | "memory";
 
   listInterests(): Promise<Interest[]>;
 
-  createUser(input: ProfileInput, id: string, deviceKeyHash: string): Promise<User>;
+  /** `email` is the verified .edu address from sign-up; never returned with the user. */
+  createUser(input: ProfileInput, id: string, deviceKeyHash: string, email: string | null): Promise<User>;
   getUser(id: string): Promise<User | null>;
   getDeviceKeyHash(id: string): Promise<string | null>;
   updateUser(id: string, patch: UserPatch): Promise<User | null>;
@@ -52,6 +59,16 @@ export interface Store {
 
   /** Removes groups with no active members whose last exit is older than the linger window. */
   expireGroups(now: Date, lingerMs: number): Promise<ExpiredGroup[]>;
+
+  /** Stores the hash of a one-time code for `key` (purpose + email), replacing any earlier one. */
+  saveEmailCode(key: string, codeHash: string, expiresAt: Date): Promise<void>;
+  /** Checks a code. A match or the last allowed miss uses it up; expired codes count as missing. */
+  checkEmailCode(key: string, codeHash: string, now: Date, maxAttempts: number): Promise<CodeCheck>;
+
+  /** Stores new reports, skipping any whose `key` was reported before. Returns how many were added. */
+  addReports(reports: NewReport[], now: Date): Promise<number>;
+  /** Newest first. */
+  listReports(limit: number): Promise<Report[]>;
 
   getFriendState(userId: string): Promise<FriendState>;
   requestFriend(from: string, to: string): Promise<"pending" | "accepted" | "exists">;

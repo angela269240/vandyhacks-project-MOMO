@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-17",
+  "updated": "2026-10-18",
   "project": {
     "name": "Orbit",
     "package_name": "orbit",
@@ -35,8 +35,9 @@
     "db": "OCI Autonomous Database (Oracle 23ai) via oracledb Thin mode; in-memory fallback when ORACLE_* unset",
     "realtime": "LiveKit Cloud (data messages, voice, screen share); SSE fallback (single process only)",
     "storage": "OCI Object Storage (avatars, chat archives); process memory fallback",
-    "hosting": "Vercel project vandyhacks-project-momo; daily cron /api/cron/expire-groups (Hobby plan)",
-    "auth": "None. userId + deviceKey in localStorage; x-user-id/x-device-key headers checked against device_key_hash on writes"
+    "hosting": "Vercel project vandyhacks-project-momo; daily crons /api/cron/moderate (04:00 UTC) and /api/cron/expire-groups (09:00 UTC) (Hobby plan)",
+    "auth": "userId + deviceKey in localStorage; x-user-id/x-device-key headers checked against device_key_hash on writes. Sign-up requires a .edu email verified by an emailed code (lib/email-codes.ts). /admin uses its own emailed-code sign-in and an HttpOnly signed cookie (lib/admin.ts).",
+    "email": "SMTP via nodemailer (lib/email.ts); with SMTP_* unset, emails are printed to the server log"
   },
   "commands": {
     "install": "npm install",
@@ -95,12 +96,12 @@
       "Fonts: Inter (UI), Space Grotesk (headings, group names) via next/font.",
       "Durations 150-250ms UI, 500-800ms camera; easing [0.22, 1, 0.36, 1]."
     ],
-    "history": "neon → warm redesign (#4) → reverted (#6) → reapplied → restore-warm-redesign (#9) → reverted (#10). Design churn is the main source of merge conflicts; confirm direction with the human before large visual changes."
+    "history": "neon \u2192 warm redesign (#4) \u2192 reverted (#6) \u2192 reapplied \u2192 restore-warm-redesign (#9) \u2192 reverted (#10). Design churn is the main source of merge conflicts; confirm direction with the human before large visual changes."
   },
   "code_map": {
     "app/(map)/layout.tsx": "Keeps the map mounted across routes",
     "app/(map)/g/[name]/page.tsx": "Room overlay on top of the map",
-    "app/api/**/route.ts": "API surface (PLAN.md §3)",
+    "app/api/**/route.ts": "API surface (PLAN.md \u00a73)",
     "components/map/SocialGraph.tsx": "Force graph, blobs, bobbing, glow, hover/focus highlighting",
     "components/map/layout.ts": "Bubble anchors / spiral layout",
     "components/room/RoomConnection.tsx": "Owns the live room (join, LiveKit or local media, chat, screen-share claim); lives in the (map) layout so Minimize keeps the connection",
@@ -110,7 +111,9 @@
     "lib/colors.ts": "Palette keys and color helpers",
     "lib/seed-data.ts": "Demo world data",
     "db/schema.sql": "Oracle schema",
-    "scripts/": "migrate.ts, seed.ts"
+    "scripts/": "migrate.ts, seed.ts",
+    "lib/moderation.ts": "Daily AI moderation review: gathers usernames, group names, chat, notes into one document, flags via OCI GenAI, stores reports",
+    "app/admin/page.tsx": "Admin-only Reports dashboard (components/admin/AdminReports.tsx)"
   },
   "gotchas": [
     "`next dev` rewrites the BEGIN/END nextjs-agent-rules block in AGENTS.md; commit it rather than fighting it.",
@@ -119,11 +122,13 @@
     "SSE realtime only works in one process; on Vercel use LiveKit.",
     "FAST_CLOCK=1 shrinks 24h linger to 2 minutes for demoing expiry.",
     "Hourly GenAI chat summaries were removed (chore/remove-chat-summaries); PLAN.md still describes them.",
-    "OCI region for the shared backend is us-chicago-1 (.env.example default says us-ashburn-1)."
+    "OCI region for the shared backend is us-chicago-1 (.env.example default says us-ashburn-1).",
+    "Moderation must run before expire-groups each day, or it misses the chat of rooms being deleted.",
+    "Locally, emailed codes (sign-up, admin) appear in the dev server log when SMTP_* is unset."
   ],
   "branches": {
     "note": "Snapshot as of `updated`. Run `git fetch && git branch -r` for truth; many remote branches are already merged into main.",
-    "color": "Uncommitted (staged) palette refactor: NEON → HUES + CSS vars, NeonParticles removed, paper grain ambient. See its session file.",
+    "color": "Uncommitted (staged) palette refactor: NEON \u2192 HUES + CSS vars, NeonParticles removed, paper grain ambient. See its session file.",
     "merged_or_stale": [
       "backend",
       "database",

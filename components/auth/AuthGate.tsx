@@ -4,7 +4,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useMe } from "@/hooks/useMe";
 import type { Identity } from "@/lib/client/api";
-import { AuthWindow } from "./AuthWindow";
+import { AuthWindow, type VerifiedEmail } from "./AuthWindow";
 import { PreviewGraph } from "./PreviewGraph";
 import { Welcome } from "./Welcome";
 
@@ -25,6 +25,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   /** set once "Create account" is pressed: the login window gives way to the welcome page */
   const [welcomeName, setWelcomeName] = useState<string | null>(null);
   const [backName, setBackName] = useState("");
+  /** the school email verified on the register step; kept if the user steps back from the welcome page */
+  const [verified, setVerified] = useState<VerifiedEmail | null>(null);
 
   useEffect(() => {
     if (!entering) return;
@@ -36,9 +38,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const showLogin = !signedIn || entering;
 
   // Once inside (overlay gone), forget the signup step so a later sign-out lands on login, not a stale welcome.
-  if (!showLogin && (welcomeName !== null || backName)) {
+  if (!showLogin && (welcomeName !== null || backName || verified)) {
     setWelcomeName(null);
     setBackName("");
+    setVerified(null);
   }
 
   return (
@@ -72,8 +75,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     <AuthWindow
                       leaving={signedIn}
                       initialName={backName}
+                      initialVerified={verified}
                       onEntered={() => setEntering(true)}
-                      onRegistered={setWelcomeName}
+                      onRegistered={(name, email) => {
+                        setVerified(email);
+                        setWelcomeName(name);
+                      }}
                       onModeChange={setAuthMode}
                     />
                   </div>
@@ -89,6 +96,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 >
                   <Welcome
                     name={welcomeName}
+                    emailToken={verified?.token ?? ""}
                     onBack={() => {
                       setBackName(welcomeName);
                       setWelcomeName(null);
