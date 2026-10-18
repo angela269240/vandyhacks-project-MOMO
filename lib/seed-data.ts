@@ -74,16 +74,19 @@ const FIRST = [
 ];
 const LAST = ["Abbott", "Bishop", "Cruz", "Dutta", "Ellis", "Fong", "Garza", "Haas", "Ito", "Joshi", "Kerr", "Lund"];
 
-/** Groups that get filled to CROWD_SIZE people in the local demo (CS3251 Exam Cram, ML Paper Club). */
+/**
+ * How many people each bubble holds in the local demo, by SEED_GROUPS index. The base world already puts 4-5 people in
+ * each group; newcomers top them up. CS3251 Exam Cram and ML Paper Club are the two big "crowd" rooms.
+ */
+const GROUP_SIZES = [20, 6, 6, 4, 20, 4];
 const CROWD_GROUPS = [0, 4];
-const CROWD_SIZE = 40;
-const CROWD_CORE = 30; // people in each crowd who each know CROWD_CORE others there
-const EXTRA_USERS = 100;
+const CROWD_CORE = 15; // people in each crowd who all know each other
+/** Newcomers who float on the outer ring instead of joining a group. */
+const RING_USERS = 7;
 
 /**
- * Local-demo stress world: 100 more people. Two groups grow to 40 members, and 30 of each group's members
- * know 30 others in it (the 30 are all friends with each other, plus one friend among the other 10).
- * The rest of the newcomers spread across the remaining groups and the outer ring.
+ * Local-demo stress world: newcomers fill each group to GROUP_SIZES, everyone in a group is in the room, and a few more
+ * wander the outer ring. In each crowd room, 15 members all know each other, plus one friend among the other 5.
  */
 function addCrowd(world: SeedWorld, r: () => number) {
   const { users, friendships } = world;
@@ -96,57 +99,41 @@ function addCrowd(world: SeedWorld, r: () => number) {
   };
 
   const start = users.length;
-  const extras: SeedUser[] = Array.from({ length: EXTRA_USERS }, (_, k) => {
+  const extras: SeedUser[] = [];
+  const newcomer = (groupIndex: number | null): SeedUser => {
+    const k = extras.length;
     const name = `${FIRST[k % FIRST.length]} ${LAST[Math.floor(k / FIRST.length) % LAST.length]}`;
-    const picked = new Set<number>();
+    const picked = new Set<number>(groupIndex === null ? [] : [interestId(SEED_GROUPS[groupIndex].interests[0])]);
     const target = 3 + Math.floor(r() * 4);
     while (picked.size < target) picked.add(1 + Math.floor(r() * INTERESTS.length));
-    return {
+    const u: SeedUser = {
       id: idFor(start + k),
       name,
       linkedin: `https://www.linkedin.com/in/${name.toLowerCase().replace(/[^a-z]+/g, "-")}`,
       bio: BIOS[Math.floor(r() * BIOS.length)],
-      interestIds: [...picked],
-      groupIndex: null,
-      memberOf: [],
-      inRoom: false,
+      interestIds: [...picked].slice(0, 6),
+      groupIndex,
+      memberOf: groupIndex === null ? [] : [groupIndex],
+      inRoom: groupIndex !== null,
       leftMinutesAgo: null,
     };
-  });
+    extras.push(u);
+    return u;
+  };
 
-  // Fill the two crowd groups to exactly CROWD_SIZE active members.
-  let next = 0;
-  for (const gi of CROWD_GROUPS) {
+  // Everyone already in a group is in the room, so each bubble shows exactly its GROUP_SIZES count.
+  GROUP_SIZES.forEach((size, gi) => {
     const existing = users.filter((u) => u.groupIndex === gi);
     for (const u of existing) {
-      // everyone in a crowd group is in the room, so the count is exactly 40
       u.inRoom = true;
       u.leftMinutesAgo = null;
     }
-    const needed = CROWD_SIZE - existing.length;
-    for (let i = 0; i < needed; i++) {
-      const u = extras[next++];
-      u.groupIndex = gi;
-      u.memberOf = [gi];
-      u.inRoom = true;
-      u.interestIds = [interestId(SEED_GROUPS[gi].interests[0]), ...u.interestIds.filter((x) => x !== interestId(SEED_GROUPS[gi].interests[0]))].slice(0, 6);
-    }
-  }
-
-  // The rest: about two-thirds join the other groups, the others wander the outer ring.
-  const others = SEED_GROUPS.map((_, i) => i).filter((i) => !CROWD_GROUPS.includes(i));
-  for (; next < extras.length; next++) {
-    const u = extras[next];
-    if (r() < 0.65) {
-      const gi = others[Math.floor(r() * others.length)];
-      u.groupIndex = gi;
-      u.memberOf = [gi];
-      u.inRoom = true;
-    }
-  }
+    for (let i = existing.length; i < size; i++) newcomer(gi);
+  });
+  for (let i = 0; i < RING_USERS; i++) newcomer(null);
   users.push(...extras);
 
-  // Friendships inside each crowd: a 30-person core that all know each other (29 each) plus one more friend each.
+  // Friendships inside each crowd: a core that all know each other plus one more friend each.
   for (const gi of CROWD_GROUPS) {
     const members = users.filter((u) => u.groupIndex === gi);
     const core = members.slice(0, CROWD_CORE);

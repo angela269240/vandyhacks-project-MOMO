@@ -101,6 +101,7 @@
   ],
   "blockers": [],
   "conflict_notes": [
-    "The paused `color` session claims components/room/**; this branch edits ChatPanel.tsx, RoomConnection.tsx, RoomView.tsx and adds NotesPanel.tsx with the current neon/white-alpha classes. Port those to hue vars when merging."
+    "The paused `color` session claims components/room/**; this branch edits ChatPanel.tsx, RoomConnection.tsx, RoomView.tsx and adds NotesPanel.tsx with the current neon/white-alpha classes. Port those to hue vars when merging.",
+    "Merged origin/main (f30c162, halved demo bubbles) into feat/room-notes: lib/store/memory.ts seededState conflicted on one line pair; kept main's comment and this branch's `notes: new Map()`. Memory key stays __socialMapperMemoryV5. Verified: typecheck, lint, seed counts 20/6/6/4/20/4 + 11 ring, notes expiry check, dev server /api/graph and /notes."
   ]
 }

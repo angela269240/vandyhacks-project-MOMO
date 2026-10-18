@@ -1,0 +1,46 @@
+{
+  "id": "20261017-2159-fix-halve-demo-bubbles-2fe4",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "fix/halve-demo-bubbles",
+  "base": "53e0252",
+  "started": "2026-10-18T02:59:24.528Z",
+  "ended": null,
+  "status": "done",
+  "goal": "Halve every bubble in the local demo world",
+  "summary": "Local demo world (memory store, crowd: true) now sizes each bubble from GROUP_SIZES = [20, 6, 6, 4, 20, 4], half of the previous 40/12/11/8/40/8; 7 newcomers still float on the outer ring (11 ring people total, 71 people overall). Crowd friendship core cut from 30 to 15. The Oracle seed (buildSeedWorld without crowd) is unchanged.",
+  "claims": [
+    "lib/seed-data.ts",
+    "lib/store/memory.ts"
+  ],
+  "files_touched": [
+    "lib/seed-data.ts",
+    "lib/store/memory.ts"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Explicit per-bubble GROUP_SIZES instead of a random 65% spread of extras.",
+      "why": "Halving exact counts needs deterministic sizes."
+    },
+    {
+      "what": "Outer ring left at 11.",
+      "why": "The request was per bubble; the ring isn't a bubble."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "Dev server on the memory store: /api/graph reports 20/6/6/4/20/4 per group and 11 on the ring; map shows the halved bubbles."
+  },
+  "next_steps": [],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": [
+    "Restart running dev servers to see the new world (memory world is cached per process)."
+  ]
+}
