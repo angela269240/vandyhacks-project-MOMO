@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Sora } from "next/font/google";
 import { Ambient } from "@/components/ambient/Ambient";
 import { Providers } from "@/components/Providers";
 import { themeBootScript } from "@/hooks/useTheme";
 import "./globals.css";
 
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
-const grotesk = Space_Grotesk({ variable: "--font-grotesk", subsets: ["latin"] });
+/** One typeface for the whole site: UI text, headings and the map canvas all read --font-sora. */
+const sora = Sora({ variable: "--font-sora", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "Orbit",
@@ -23,7 +23,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${grotesk.variable} antialiased`} suppressHydrationWarning>
+    <html lang="en" className={`dark ${sora.variable} antialiased`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>

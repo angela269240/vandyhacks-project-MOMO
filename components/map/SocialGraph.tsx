@@ -381,8 +381,8 @@ export default function SocialGraph(props: Props) {
     motionOK.current = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const css = getComputedStyle(document.documentElement);
     fonts.current = {
-      sans: css.getPropertyValue("--font-inter").trim() || "sans-serif",
-      heading: css.getPropertyValue("--font-grotesk").trim() || "sans-serif",
+      sans: css.getPropertyValue("--font-sora").trim() || "sans-serif",
+      heading: css.getPropertyValue("--font-sora").trim() || "sans-serif",
     };
     const resize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
     resize();
@@ -484,8 +484,9 @@ export default function SocialGraph(props: Props) {
           return node.user.groupId !== null && isFocused(node);
         };
         if (![...nodes.values()].some(filter)) return;
-        holdCamera(ms);
         const box = fg.getGraphBbox(filter);
+        if (!box) return; // the graph hasn't taken in these nodes yet; the next fit will catch them
+        holdCamera(ms);
         const padX = FIT_PAD.x;
         const padY = FIT_PAD.y; // room for the top bar and the degrees slider below
         const w = Math.max(box.x[1] - box.x[0], 1);
