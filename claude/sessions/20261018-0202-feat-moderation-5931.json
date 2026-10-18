@@ -61,16 +61,19 @@
     {
       "what": "Email is not unique and there is no email login",
       "why": "Out of scope; unique emails without email login would lock out anyone who loses their browser profile."
+    },
+    {
+      "what": "addReports uses MERGE per row instead of INSERT with batchErrors",
+      "why": "In thin mode a duplicate key within one executeMany batch threw ORA-00001 for the whole batch instead of being collected."
     }
   ],
   "verification": {
     "typecheck": "pass",
     "lint": "pass",
     "build": "not run",
-    "manual": "Local dev on the memory store with real OCI GenAI: non-.edu rejected, wrong/reused code and tampered token rejected, full sign-up through the UI; moderation cron reviewed 99 items and flagged 6 planted ones (gift-card scam, selling answers, doxxing, prompt injection, cheating group name, scam username) and skipped benign 'this exam is going to kill me lol'; a rerun added 0. /admin: unauth and forged cookie 401, non-admin email gets no code, sign-in with code shows Reports, rows expand with the room link; checked at 375px. Oracle store code NOT run: the shared DB doesn't have the new tables yet."
+    "manual": "Local dev on the memory store with real OCI GenAI: non-.edu rejected, wrong/reused code and tampered token rejected, full sign-up through the UI; moderation cron reviewed 99 items and flagged 6 planted ones (gift-card scam, selling answers, doxxing, prompt injection, cheating group name, scam username) and skipped benign 'this exam is going to kill me lol'; a rerun added 0. /admin: unauth and forged cookie 401, non-admin email gets no code, sign-in with code shows Reports, rows expand with the room link; checked at 375px. Shared DB migrated with db:migrate --upgrade (users.email, email_codes, moderation_reports); Oracle smoke test of saveEmailCode/checkEmailCode/addReports (incl. duplicates)/listReports passed, test rows deleted."
   },
   "next_steps": [
-    "Apply the schema to the shared DB (one person, after review): npm run db:migrate -- --upgrade. Until then, sign-up and the moderation cron fail on the Oracle store.",
     "Set on Vercel: AUTH_SECRET, SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD, EMAIL_FROM (OCI Email Delivery needs an approved sender), optionally ADMIN_EMAILS.",
     "After deploy, trigger /api/cron/moderate once with the cron secret and check /admin."
   ],

@@ -464,14 +464,16 @@ export const oracleStore: Store = {
   },
 
   async addReports(reports, now) {
-    if (!reports.length) return 0;
+    // One row per key (the model can flag the same item twice); MERGE skips keys reported on earlier days.
+    const unique = [...new Map(reports.map((r) => [r.key, r])).values()];
+    if (!unique.length) return 0;
     return withConnection(async (conn) => {
-      // batchErrors: rows whose report_key already exists fail alone (ORA-00001); the rest go in.
       const res = await conn.executeMany(
-        `INSERT INTO moderation_reports
-           (id, report_key, category, severity, summary, reason, excerpt, user_id, user_name, group_name, item_at, created_at)
-         VALUES (:id, :k, :category, :severity, :summary, :reason, :excerpt, :userId, :userName, :groupName, :itemAt, :now)`,
-        reports.map((r) => ({
+        `MERGE INTO moderation_reports t USING (SELECT :k AS k FROM dual) s ON (t.report_key = s.k)
+          WHEN NOT MATCHED THEN INSERT
+            (id, report_key, category, severity, summary, reason, excerpt, user_id, user_name, group_name, item_at, created_at)
+          VALUES (:id, s.k, :category, :severity, :summary, :reason, :excerpt, :userId, :userName, :groupName, :itemAt, :now)`,
+        unique.map((r) => ({
           id: randomUUID(),
           k: r.key,
           category: r.category,
@@ -486,10 +488,9 @@ export const oracleStore: Store = {
           now,
         })),
         {
-          batchErrors: true,
           bindDefs: {
-            id: { type: oracledb.STRING, maxSize: 36 },
             k: { type: oracledb.STRING, maxSize: 64 },
+            id: { type: oracledb.STRING, maxSize: 36 },
             category: { type: oracledb.STRING, maxSize: 10 },
             severity: { type: oracledb.STRING, maxSize: 6 },
             summary: { type: oracledb.STRING, maxSize: 800 },
@@ -503,14 +504,8 @@ export const oracleStore: Store = {
           },
         },
       );
-      const failed = res.batchErrors ?? [];
-      const other = failed.find((e) => e.errorNum !== 1);
-      if (other) {
-        await conn.rollback();
-        throw other;
-      }
       await conn.commit();
-      return reports.length - failed.length;
+      return res.rowsAffected ?? 0;
     });
   },
 
