@@ -2,7 +2,7 @@ import { hashString } from "@/lib/colors";
 
 /**
  * World-space layout for the map.
- * Focused bubbles sit on a phyllotaxis spiral around the origin, with your current bubble (and you) at the center.
+ * Focused bubbles sit on a square-balanced phyllotaxis layout around the origin, with your current bubble (and you) at the center.
  * Unfocused bubbles line up in a strip to the right, off-screen until you pan sideways.
  */
 
@@ -42,7 +42,7 @@ export type CenterMark = { r: number; label: LabelBox };
 const LABEL_GAP = 24;
 type Box = { x0: number; y0: number; x1: number; y1: number };
 /** a bubble (or you) on the layout: its circle plus the label boxes drawn next to it */
-type Footprint = { p: Pt2; r: number; boxes: Box[] };
+type Footprint = { groupId?: number | null; p: Pt2; r: number; boxes: Box[] };
 
 const above = (p: Pt2, r: number, l: LabelBox): Box => ({ x0: p.x - l.w / 2, x1: p.x + l.w / 2, y0: p.y - r - l.h, y1: p.y - r });
 const below = (p: Pt2, r: number, l: LabelBox): Box => ({ x0: p.x - l.w / 2, x1: p.x + l.w / 2, y0: p.y + r, y1: p.y + r + l.h });
@@ -64,6 +64,53 @@ const reach = (f: Footprint) =>
     ...f.boxes.flatMap((b) => [Math.hypot(b.x0, b.y0), Math.hypot(b.x1, b.y0), Math.hypot(b.x0, b.y1), Math.hypot(b.x1, b.y1)]),
   );
 
+const bubbleBounds = (footprints: Footprint[]) => ({
+  x0: Math.min(...footprints.map((f) => f.p.x - f.r)),
+  x1: Math.max(...footprints.map((f) => f.p.x + f.r)),
+  y0: Math.min(...footprints.map((f) => f.p.y - f.r)),
+  y1: Math.max(...footprints.map((f) => f.p.y + f.r)),
+});
+
+/**
+ * Stretch only the shorter axis until the focused bubble field is square. Distances can only grow, so this preserves
+ * every circle/label clearance established by the spiral without letting long, fixed-size labels distort the shape.
+ */
+function squareFootprints(footprints: Footprint[]): Footprint[] {
+  if (footprints.length < 2) return footprints;
+  const bounds = bubbleBounds(footprints);
+  const width = bounds.x1 - bounds.x0;
+  const height = bounds.y1 - bounds.y0;
+  if (Math.abs(width - height) < 0.5) return footprints;
+
+  const axis = width < height ? "x" : "y";
+  const target = Math.max(width, height);
+  const stretch = (scale: number) =>
+    footprints.map((f) => {
+      const p = axis === "x" ? { x: f.p.x * scale, y: f.p.y } : { x: f.p.x, y: f.p.y * scale };
+      const dx = p.x - f.p.x;
+      const dy = p.y - f.p.y;
+      return {
+        ...f,
+        p,
+        boxes: f.boxes.map((b) => ({ x0: b.x0 + dx, x1: b.x1 + dx, y0: b.y0 + dy, y1: b.y1 + dy })),
+      };
+    });
+  const span = (scale: number) => {
+    const b = bubbleBounds(stretch(scale));
+    return axis === "x" ? b.x1 - b.x0 : b.y1 - b.y0;
+  };
+
+  let low = 1;
+  let high = 2;
+  while (span(high) < target) high *= 2;
+  for (let i = 0; i < 24; i++) {
+    const mid = (low + high) / 2;
+    if (span(mid) < target) low = mid;
+    else high = mid;
+  }
+  return stretch(high);
+}
+
 /**
  * Places bubbles along a golden-angle spiral, pushing each one outward until it clears every bubble
  * already placed, so a 40-person bubble gets the room it needs without spreading out the small ones.
@@ -82,10 +129,10 @@ export function computeLayout(
   me: CenterMark = { r: 40, label: { w: 0, h: 0 } },
 ): Layout {
   const anchors = new Map<number, Pt2>();
-  const placed: Footprint[] = [];
+  let placed: Footprint[] = [];
   const footprint = (id: number, p: Pt2, r: number): Footprint => {
     const l = labels.get(id);
-    return { p, r, boxes: l ? [above(p, r, l)] : [] };
+    return { groupId: id, p, r, boxes: l ? [above(p, r, l)] : [] };
   };
   const clear = (f: Footprint) => placed.every((o) => footprintsApart(f, o));
 
@@ -101,7 +148,7 @@ export function computeLayout(
     anchors.set(centerId, origin);
     placed.push(footprint(centerId, origin, centerR));
   } else {
-    placed.push({ p: origin, r: me.r, boxes: me.label.w ? [below(origin, me.r, me.label)] : [] });
+    placed.push({ groupId: null, p: origin, r: me.r, boxes: me.label.w ? [below(origin, me.r, me.label)] : [] });
   }
 
   ordered.forEach((id, i) => {
@@ -116,6 +163,10 @@ export function computeLayout(
     anchors.set(id, f.p);
     placed.push(f);
   });
+
+  const squared = squareFootprints(placed);
+  for (const f of squared) if (typeof f.groupId === "number") anchors.set(f.groupId, f.p);
+  placed = squared;
 
   // People in no bubble circle the whole cluster, labels included, with room to spare.
   const extent = Math.max(...placed.map(reach));
