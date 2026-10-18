@@ -82,6 +82,16 @@ const BLOB_PAD = 60;
 const ARRIVED = 230; // members farther than this from their anchor are still travelling
 const DOUBLE_CLICK_MS = 260;
 const TONE_FADE_MS = 700;
+/**
+ * Edge opacity, per theme. Edges inside a bubble stay faint so dense groups don't turn into dark mats;
+ * edges between bubbles (or to people outside any) stay a little stronger since they show cross-community ties.
+ * Dark values give each line about the same contrast on charcoal as the light value has on cream
+ * (pale lines on charcoal read stronger than dark lines on cream, so the numbers are lower).
+ */
+const EDGE_ALPHA = {
+  light: { intra: 0.12, inter: 0.18, highlight: 0.75, faded: 0.04 },
+  dark: { intra: 0.075, inter: 0.11, highlight: 0.5, faded: 0.025 },
+} as const;
 const TONE_KEYS: ToneKey[] = [...HUES.map((h) => h.key), "stone"];
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -626,7 +636,10 @@ export default function SocialGraph(props: Props) {
     const b = renderPos(e);
     const vivid = f.vivid?.has(l.key) ?? false;
 
-    let alpha = f.highlight ? (vivid ? 0.9 : 0.05) : f.light ? 0.3 : 0.22;
+    // Hovering (or selecting) someone lifts their own edges and fades the rest.
+    const A = f.light ? EDGE_ALPHA.light : EDGE_ALPHA.dark;
+    const sameGroup = s.user.groupId !== null && s.user.groupId === e.user.groupId;
+    let alpha = f.highlight ? (vivid ? A.highlight : A.faded) : sameGroup ? A.intra : A.inter;
     if (s.user.away || e.user.away) alpha *= 0.6;
     if (!isFocused(s) || !isFocused(e)) alpha *= 0.5;
     if (focus.current && (s.user.groupId !== focus.current.groupId || e.user.groupId !== focus.current.groupId)) {
