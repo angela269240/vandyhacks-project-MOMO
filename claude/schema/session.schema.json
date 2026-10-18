@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claude/schema/session.schema.json",
+  "title": "Agent session handoff record",
+  "type": "object",
+  "required": ["id", "status", "branch", "started", "goal", "claims", "next_steps"],
+  "properties": {
+    "id": { "type": "string", "description": "Matches the filename stem, e.g. 20261017-2045-color-a1b2" },
+    "continues": { "type": ["string", "null"], "description": "id of the paused session this one picks up" },
+    "agent": { "type": "string", "description": "e.g. claude-code" },
+    "model": { "type": "string" },
+    "human": { "type": "string", "description": "git user.name driving the session" },
+    "branch": { "type": "string" },
+    "base": { "type": "string", "description": "Commit the work started from (short sha)" },
+    "worktree": { "type": "string", "description": "Path if not the main checkout" },
+    "started": { "type": "string", "format": "date-time" },
+    "ended": { "type": ["string", "null"], "format": "date-time" },
+    "status": { "enum": ["active", "paused", "done", "abandoned"] },
+    "goal": { "type": "string" },
+    "summary": { "type": "string" },
+    "claims": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths or globs this session expects to change; used for overlap warnings while status is active/paused"
+    },
+    "files_touched": { "type": "array", "items": { "type": "string" } },
+    "commits": { "type": "array", "items": { "type": "string" }, "description": "short sha + subject" },
+    "uncommitted": { "type": "boolean", "description": "true if work was left staged/unstaged in the working tree" },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["what", "why"],
+        "properties": { "what": { "type": "string" }, "why": { "type": "string" } }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Real results only. Use 'not run' when skipped.",
+      "properties": {
+        "typecheck": { "type": "string" },
+        "lint": { "type": "string" },
+        "build": { "type": "string" },
+        "manual": { "type": "string" }
+      }
+    },
+    "next_steps": { "type": "array", "items": { "type": "string" }, "description": "Ordered; each actionable by a cold agent" },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "conflict_notes": { "type": "array", "items": { "type": "string" }, "description": "What a future merge of this work needs to know" }
+  },
+  "additionalProperties": true
+}

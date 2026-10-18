@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "updated": "2026-10-17",
+  "project": {
+    "name": "Orbit",
+    "package_name": "orbit",
+    "repo": "git@github.com:angela269240/vandyhacks-project-MOMO.git",
+    "main_branch": "main",
+    "pitch": "Redefining social media, for learning: a live map of people (circles) and friendships (lines) grouped into interest-group bubbles; click a bubble to zoom into its room for text chat, voice and screen share.",
+    "scope": "VandyHacks hackathon demo. Polished visuals + working happy path. Optimize for the demo, not scale or hardening.",
+    "team_git_names": [
+      "Sui Bai",
+      "sui-bai",
+      "Angela Wang",
+      "Eileen Luo",
+      "Nobell0656"
+    ]
+  },
+  "docs": {
+    "README.md": "Run instructions, env matrix, code map",
+    "PLAN.md": "Full original design. Sections 0-3, 5, 11 are current. Sections 1 and 4 (neon palette, NeonParticles, deep-blue tokens) are SUPERSEDED by the warm redesign; see design.current.",
+    "TEAM_SETUP.md": "Shared cloud backend, .env.local handling, shared-DB rules",
+    "AGENTS.md": "Next.js agent rules block, auto-written by `next dev`",
+    "claude/README.md": "This handoff protocol",
+    "claude/conflicts.json": "Merge-conflict playbook"
+  },
+  "stack": {
+    "framework": "Next.js 16.4.2 App Router, React 19.3, TypeScript 5",
+    "nextjs_warning": "Breaking changes vs. training data. Read node_modules/next/dist/docs/ before writing Next-specific code.",
+    "styling": "Tailwind v4 (@tailwindcss/turbopack), shadcn (base-ui primitives) in components/ui, tw-animate-css",
+    "graph": "react-force-graph-2d (canvas) + d3-force, d3-polygon, d3-shape",
+    "motion": "motion (Framer Motion)",
+    "data_fetching": "swr",
+    "validation": "zod v4 on every API route body (lib/schemas.ts)",
+    "db": "OCI Autonomous Database (Oracle 23ai) via oracledb Thin mode; in-memory fallback when ORACLE_* unset",
+    "realtime": "LiveKit Cloud (data messages, voice, screen share); SSE fallback (single process only)",
+    "storage": "OCI Object Storage (avatars, chat archives); process memory fallback",
+    "hosting": "Vercel project vandyhacks-project-momo; daily cron /api/cron/expire-groups (Hobby plan)",
+    "auth": "None. userId + deviceKey in localStorage; x-user-id/x-device-key headers checked against device_key_hash on writes"
+  },
+  "commands": {
+    "install": "npm install",
+    "dev": "npm run dev",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "lint": "npm run lint",
+    "migrate": "npm run db:migrate",
+    "migrate_upgrade": "npm run db:migrate -- --upgrade",
+    "seed": "npm run db:seed",
+    "handoff_briefing": "node claude/session-start.mjs",
+    "handoff_new_session": "node claude/new-session.mjs \"<goal>\""
+  },
+  "verify_before_handoff": [
+    "npm run typecheck",
+    "npm run lint"
+  ],
+  "invariants": [
+    "API routes that touch oracledb run on the Node runtime, never Edge.",
+    "lib/store/types.ts defines the Store interface; lib/store/memory.ts and lib/store/oracle.ts must both implement every change.",
+    "Schema changes go in db/schema.sql via PR, and scripts/migrate.ts --upgrade must cover existing databases. One person applies them to the shared DB.",
+    "Every write route validates its body with zod and checks the device key (lib/auth.ts).",
+    "State changes broadcast through lib/events.ts so every open map updates live.",
+    "The app must keep running with zero env vars (in-memory world, SSE, local media preview).",
+    "Map zoom keeps d3-zoom's default direction; scrolling up inside a room zooms back out to the map.",
+    "A user is in exactly one active room (users.current_group_id); group_members keeps every community they joined.",
+    "Respect prefers-reduced-motion for bobbing, trembling and camera moves.",
+    "Never commit .env.local or any secret; never paste its contents into chat, PRs or these handoff files."
+  ],
+  "danger": [
+    {
+      "action": "npm run db:migrate -- --reset",
+      "why": "Drops every table on the SHARED team database. Never run it unless the human explicitly confirms for this exact run."
+    },
+    {
+      "action": "npm run db:seed",
+      "why": "Deletes and recreates seed-* users and seed groups on the shared DB. Ask the human first."
+    },
+    {
+      "action": "git push --force / rewriting main",
+      "why": "Several teammates and agents branch off main concurrently."
+    },
+    {
+      "action": "Reading or printing .env.local",
+      "why": "Contains the OCI private key and DB password."
+    }
+  ],
+  "design": {
+    "current": "Warm redesign: charcoal (dark) / cream (light) themes, bone text, clay accent, static paper-grain ambient layer, soft OKLCH map palette.",
+    "palette_source_of_truth": "app/globals.css defines --hue-<key> per theme; lib/colors.ts HUES lists keys (sage, clay, slate, ochre, plum, teal, rose, olive) + neutral 'stone'. Render with hueVar(key) / interestColor(id) / identityColor(user); use lib/client/palette.ts useHueHex() when real hex is needed (canvas, SVG gradients).",
+    "palette_status": "HUES/CSS-var palette is staged on branch `color`, not yet on main. main still has the NEON array and NeonParticles.",
+    "group_hues": "lib/client/groupHues.ts assigns each bubble a hue from the full unfiltered layout so neighbors differ; every surface reads the bubble's hue from there. Purely visual, not stored.",
+    "stored_colors": "DB color columns hold a swatch hex only for records; UI never renders them directly.",
+    "rules": [
+      "No hardcoded hex in components; use theme tokens or hueVar().",
+      "Fonts: Inter (UI), Space Grotesk (headings, group names) via next/font.",
+      "Durations 150-250ms UI, 500-800ms camera; easing [0.22, 1, 0.36, 1]."
+    ],
+    "history": "neon → warm redesign (#4) → reverted (#6) → reapplied → restore-warm-redesign (#9) → reverted (#10). Design churn is the main source of merge conflicts; confirm direction with the human before large visual changes."
+  },
+  "code_map": {
+    "app/(map)/layout.tsx": "Keeps the map mounted across routes",
+    "app/(map)/g/[name]/page.tsx": "Room overlay on top of the map",
+    "app/api/**/route.ts": "API surface (PLAN.md §3)",
+    "components/map/SocialGraph.tsx": "Force graph, blobs, bobbing, glow, hover/focus highlighting",
+    "components/map/layout.ts": "Bubble anchors / spiral layout",
+    "components/room/RoomConnection.tsx": "Owns the live room (join, LiveKit or local media, chat, screen-share claim); lives in the (map) layout so Minimize keeps the connection",
+    "components/room/RoomView.tsx": "Room screen: header, stage, dock, chat, transitions",
+    "lib/store/": "Store interface + oracle.ts and memory.ts implementations",
+    "lib/events.ts": "Lobby/room event fan-out via LiveKit or SSE bus",
+    "lib/colors.ts": "Palette keys and color helpers",
+    "lib/seed-data.ts": "Demo world data",
+    "db/schema.sql": "Oracle schema",
+    "scripts/": "migrate.ts, seed.ts"
+  },
+  "gotchas": [
+    "`next dev` rewrites the BEGIN/END nextjs-agent-rules block in AGENTS.md; commit it rather than fighting it.",
+    ".gitignore ignores /.claude/* except .claude/settings.json (the shared SessionStart hook). Personal settings go in .claude/settings.local.json.",
+    "tsconfig.tsbuildinfo and next-env.d.ts are generated and ignored.",
+    "SSE realtime only works in one process; on Vercel use LiveKit.",
+    "FAST_CLOCK=1 shrinks 24h linger to 2 minutes for demoing expiry.",
+    "Hourly GenAI chat summaries were removed (chore/remove-chat-summaries); PLAN.md still describes them.",
+    "OCI region for the shared backend is us-chicago-1 (.env.example default says us-ashburn-1)."
+  ],
+  "branches": {
+    "note": "Snapshot as of `updated`. Run `git fetch && git branch -r` for truth; many remote branches are already merged into main.",
+    "color": "Uncommitted (staged) palette refactor: NEON → HUES + CSS vars, NeonParticles removed, paper grain ambient. See its session file.",
+    "merged_or_stale": [
+      "backend",
+      "database",
+      "frontend",
+      "nobel",
+      "sui",
+      "cinnamoncicada",
+      "chore/remove-chat-summaries",
+      "feat/orbit-map-controls",
+      "fix/map-interaction-polish",
+      "warm-redesign",
+      "restore-warm-redesign",
+      "revert-4-warm-redesign",
+      "revert-9-restore-warm-redesign",
+      "Nobell0656/frontend",
+      "feat/voice-onboarding"
+    ],
+    "chore/claude-handoff": "Adds the claude/ handoff system (this folder)."
+  }
+}

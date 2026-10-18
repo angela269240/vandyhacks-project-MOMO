@@ -42,5 +42,6 @@ next-env.d.ts
 
 !.env.example
 
-# local Claude preview config
-/.claude/
+# local Claude config; settings.json is shared (SessionStart handoff hook, see claude/README.md)
+/.claude/*
+!/.claude/settings.json

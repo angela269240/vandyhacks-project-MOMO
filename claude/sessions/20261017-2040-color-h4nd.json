@@ -1,0 +1,67 @@
+{
+  "id": "20261017-2040-color-h4nd",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "sui-bai",
+  "branch": "chore/claude-handoff",
+  "base": "fe87126",
+  "started": "2026-10-17T20:40:00-05:00",
+  "ended": "2026-10-17T20:58:00-05:00",
+  "status": "done",
+  "goal": "Set up the claude/ handoff system: machine-readable project facts, per-session handoff records, merge-conflict playbook, auto-loaded at session start.",
+  "summary": "Added claude/ (README protocol, project.json, conflicts.json, session schema, session-start.mjs briefing, new-session.mjs), root CLAUDE.md importing AGENTS.md + claude/README.md, committed .claude/settings.json with a SessionStart hook, un-ignored that one file, and documented it in README.md. Also wrote a reconstructed record for the uncommitted color work. Committed on chore/claude-handoff (worktree ../momo-claude-handoff, based on origin/main) separately from the staged color work, PR to main.",
+  "claims": [
+    "claude/**",
+    "CLAUDE.md",
+    ".claude/settings.json",
+    ".gitignore",
+    "README.md"
+  ],
+  "files_touched": [
+    "claude/README.md",
+    "claude/project.json",
+    "claude/conflicts.json",
+    "claude/schema/session.schema.json",
+    "claude/session-start.mjs",
+    "claude/new-session.mjs",
+    "claude/sessions/20261017-2000-color-c0l0.json",
+    "claude/sessions/20261017-2040-color-h4nd.json",
+    "CLAUDE.md",
+    ".claude/settings.json",
+    ".gitignore",
+    "README.md"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Folder is claude/ (no dot), not .claude/",
+      "why": ".gitignore ignored /.claude/ as local preview config; handoff data must be committed and shared across teammates' instances."
+    },
+    {
+      "what": "One JSON file per session instead of a shared log",
+      "why": "Per-session files never conflict across parallel branches."
+    },
+    {
+      "what": "Briefing reads session files from every local and remote-tracking branch via git show",
+      "why": "Instances on other branches can see each other's claims without merging first."
+    },
+    {
+      "what": "Briefing never runs git fetch",
+      "why": "Keeps session start fast and offline-safe; it prints the last fetch age instead."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass before these changes; no TS changed",
+    "lint": "not run",
+    "build": "not run",
+    "manual": "ran node claude/session-start.mjs and new-session.mjs; JSON files parse"
+  },
+  "next_steps": [],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": [
+    "Built in a separate worktree so the staged palette work on `color` stays out of this PR."
+  ]
+}
