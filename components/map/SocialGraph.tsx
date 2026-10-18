@@ -102,7 +102,6 @@ type Props = {
   onGroupClick: (group: GraphGroup) => void;
   onGroupDoubleClick: (group: GraphGroup, screen: { x: number; y: number }) => void;
   onBackgroundClick: () => void;
-  onDropOnGroup: (group: GraphGroup) => void;
   onReady: (api: MapApi) => void;
 };
 
@@ -193,8 +192,6 @@ export default function SocialGraph(props: Props) {
   const focus = useRef<{ groupId: number; start: number } | null>(null);
   const pulses = useRef(new Map<number, number>());
   const images = useRef(new Map<string, HTMLImageElement>());
-  /** dragging your own circle (drop it on a bubble to join) */
-  const drag = useRef<{ node: NodeData; startX: number; startY: number; moved: boolean } | null>(null);
   /** a press anywhere else: a click until it moves past CLICK_SLOP, then a camera pan */
   const pan = useRef<{ startX: number; startY: number; lastX: number; lastY: number; moved: boolean } | null>(null);
   /** world-space extent of the visible people, eased so the camera limits don't tremble with the sim */
@@ -454,6 +451,7 @@ export default function SocialGraph(props: Props) {
         fg.zoom(k, ms);
       },
       centerOn: (target, leftInset = 0, ms = 700) => {
+        holdCamera(ms);
         // Aim at where the bubble is headed, not where it is: a search match is being moved to the middle of the layout.
         const n = "userId" in target ? nodes.get(target.userId) : undefined;
         const groupId = "groupId" in target ? target.groupId : (n?.user.groupId ?? null);
@@ -610,7 +608,7 @@ export default function SocialGraph(props: Props) {
   }, [props.roomGroupId]);
 
   const renderPos = (n: NodeData) => {
-    const b = bob(n.phase, frame.current.t, motionOK.current && drag.current?.node !== n);
+    const b = bob(n.phase, frame.current.t, motionOK.current);
     return { x: (n.x ?? 0) + b.dx, y: (n.y ?? 0) + b.dy };
   };
 
@@ -645,7 +643,7 @@ export default function SocialGraph(props: Props) {
       const nb = (id: string) => neighbors.current.get(id) ?? new Set<string>();
 
       f.highlight = f.vivid = f.ringed = null;
-      if (hover && !drag.current) {
+      if (hover && !pan.current?.moved) {
         f.highlight = new Set([hover, ...nb(hover)]);
         f.vivid = new Set([...nb(hover)].map((o) => pairKey(hover, o)));
       } else if (selectedId) {
@@ -662,7 +660,7 @@ export default function SocialGraph(props: Props) {
 
       const byGroup = new Map<number, NodeData[]>();
       for (const n of nodes.values()) {
-        if (n.user.groupId === null || !isVisible(n) || drag.current?.node === n) continue;
+        if (n.user.groupId === null || !isVisible(n)) continue;
         if (!byGroup.has(n.user.groupId)) byGroup.set(n.user.groupId, []);
         byGroup.get(n.user.groupId)!.push(n);
       }
@@ -790,7 +788,7 @@ export default function SocialGraph(props: Props) {
     const born = n.bornAt ? clamp01((f.t - n.bornAt) / 650) : 1;
     const isMe = n.id === meId;
     const base = NODE_R * (focused ? 1 : UNFOCUSED_SCALE) * (isMe ? 1.3 : 1);
-    const r = base * (hovered || selected ? 1.2 : 1) * Math.max(0, easeOutBack(born)) * (drag.current?.node === n ? 1.15 : 1);
+    const r = base * (hovered || selected ? 1.2 : 1) * Math.max(0, easeOutBack(born));
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -983,18 +981,6 @@ export default function SocialGraph(props: Props) {
   };
   /** A person's hit area is exactly their drawn disc, so the gaps between people still grab the bubble. */
   const hitRadius = (n: NodeData) => NODE_R * (isFocused(n) ? 1 : UNFOCUSED_SCALE) * (n.id === propsRef.current.meId ? 1.3 : 1);
-  const nodeAt = (sx: number, sy: number) => {
-    const fg = fgRef.current;
-    if (!fg) return null;
-    const point = fg.screen2GraphCoords(sx, sy);
-    for (const n of [...nodes.values()].reverse()) {
-      if (!isVisible(n)) continue;
-      const pos = renderPos(n);
-      const radius = hitRadius(n);
-      if (Math.hypot(point.x - pos.x, point.y - pos.y) <= radius) return n;
-    }
-    return null;
-  };
   const inRoom = props.roomGroupId !== null;
   /** capture on the canvas, so force-graph still sees the release and its own press state stays right */
   const capturePointer = (e: React.PointerEvent) => {
@@ -1007,18 +993,10 @@ export default function SocialGraph(props: Props) {
       ref={wrapRef}
       // touch-none: a finger on the map pans it instead of scrolling the page
       className="absolute inset-0 touch-none"
-      // Your own circle drags (drop it on a bubble to join). Any other press is a click until it moves past
-      // CLICK_SLOP, then it pans the camera: people, bubbles and lines all move together, nobody's position changes.
+      // Every press (on a person, a bubble or empty space) is a click until it moves past CLICK_SLOP, then it pans
+      // the camera: people, bubbles and lines all move together, nobody's position changes.
       onPointerDownCapture={(e) => {
-        const fg = fgRef.current;
-        if (inRoom || !fg || e.button !== 0) return;
-        const p = localPoint(e);
-        const hitNode = nodeAt(p.x, p.y);
-        if (hitNode && hitNode.id === propsRef.current.meId) {
-          drag.current = { node: hitNode, startX: e.clientX, startY: e.clientY, moved: false };
-          capturePointer(e);
-          return;
-        }
+        if (inRoom || !fgRef.current || e.button !== 0) return;
         pan.current = { startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
       }}
       onWheelCapture={(e) => {
@@ -1037,20 +1015,7 @@ export default function SocialGraph(props: Props) {
         writeCamera(fg, applyDragDelta(cur, -delta, 0, panBounds(cur.k)));
       }}
       onPointerMove={(e) => {
-        const d = drag.current;
         const fg = fgRef.current;
-        if (d && fg) {
-          if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > CLICK_SLOP) d.moved = true;
-          if (d.moved) {
-            const p = localPoint(e);
-            const { x, y } = fg.screen2GraphCoords(p.x, p.y);
-            d.node.fx = d.node.x = x;
-            d.node.fy = d.node.y = y;
-            hoverGroup.current = groupAt(p.x, p.y);
-            wrapRef.current!.style.cursor = "grabbing";
-          }
-          return;
-        }
         const pn = pan.current;
         if (pn && fg) {
           if (!pn.moved) {
@@ -1077,35 +1042,18 @@ export default function SocialGraph(props: Props) {
         hoverGroup.current = inRoom ? null : groupAt(p.x, p.y);
         const h = hoverNode.current;
         if (inRoom) wrapRef.current!.style.cursor = h ? "pointer" : "";
-        else if (h) wrapRef.current!.style.cursor = h.id === propsRef.current.meId ? "grab" : "pointer";
+        else if (h) wrapRef.current!.style.cursor = "pointer";
         else wrapRef.current!.style.cursor = hoverGroup.current !== null ? "pointer" : "grab";
       }}
-      onPointerUp={(e) => {
-        const d = drag.current;
-        drag.current = null;
+      onPointerUp={() => {
         const pn = pan.current;
         pan.current = null;
-        if (pn?.moved) {
-          suppressClick.current = true;
-          setTimeout(() => (suppressClick.current = false), 100);
-          wrapRef.current!.style.cursor = "grab";
-          return;
-        }
-        if (!d || !d.moved) return;
+        if (!pn?.moved) return;
         suppressClick.current = true;
         setTimeout(() => (suppressClick.current = false), 100);
-        const p = localPoint(e);
-        const id = groupAt(p.x, p.y);
-        const g = id === null ? undefined : groups.current.get(id);
-        if (g && g.id !== d.node.user.groupId) {
-          d.node.fx = d.node.fy = undefined;
-          propsRef.current.onDropOnGroup(g);
-        }
-        // dropped in open space (or back home): it stays where you put it
-        wrapRef.current!.style.cursor = "";
+        wrapRef.current!.style.cursor = "grab";
       }}
       onPointerCancel={() => {
-        drag.current = null;
         pan.current = null;
       }}
       onPointerLeave={() => {
@@ -1155,7 +1103,7 @@ export default function SocialGraph(props: Props) {
           cooldownTicks={720}
           d3VelocityDecay={0.35}
           onNodeHover={(n) => {
-            if (drag.current || pan.current?.moved) return;
+            if (pan.current?.moved) return;
             hoverNode.current = (n as NodeData | null) ?? null;
           }}
           onNodeClick={(n) => {

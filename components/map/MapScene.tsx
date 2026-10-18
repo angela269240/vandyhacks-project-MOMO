@@ -5,7 +5,6 @@ import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { AddToBookmark } from "@/components/bookmarks/AddToBookmark";
 import { OrbitLogo } from "@/components/brand/OrbitLogo";
@@ -21,11 +20,11 @@ import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Button } from "@/components/ui/button";
 import { refreshGraph, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
-import { api, roomPath } from "@/lib/client/api";
+import { roomPath } from "@/lib/client/api";
 import { passesFilters, type SearchMatches, searchMatches, withinDegrees } from "@/lib/client/filters";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import { identityColor } from "@/lib/colors";
-import type { Group, GraphGroup, GraphUser } from "@/lib/types";
+import type { GraphGroup, GraphUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DegreesSlider } from "./DegreesSlider";
 import { MapSidebar, type SearchPick, SIDEBAR_WIDTH } from "./MapSidebar";
@@ -187,17 +186,6 @@ export function MapScene() {
     setTimeout(() => router.push(roomPath(group.name)), 450);
   };
 
-  const dropOnGroup = async (group: GraphGroup) => {
-    if (!identity) return;
-    try {
-      await api<Group>(`/api/groups/${encodeURIComponent(group.name)}/join`, { method: "POST" });
-      await refreshGraph(mutate);
-      toast.success(`You joined ${group.name}`, { description: "Click the bubble to step inside." });
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
   const selected = selectedId ? graph?.users.find((u) => u.id === selectedId) : undefined;
   const groupById = (id: number | null) => graph?.groups.find((g) => g.id === id) ?? null;
   const onMap = !roomName;
@@ -225,7 +213,6 @@ export function MapScene() {
               setSelectedId(null);
               if (roomName) sceneEvents.emit("exit-room");
             }}
-            onDropOnGroup={dropOnGroup}
           />
         )}
       </div>
