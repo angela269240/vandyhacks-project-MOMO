@@ -1,24 +1,33 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { HUES, rgba } from "@/lib/colors";
 
 type AuthMode = "login" | "register";
 type Node = {
   x: number;
   y: number;
   z: number;
+  /** ring: the community color, as on the map */
   color: string;
+  /** fill: the person's own color */
+  fill: string;
   phase: [number, number, number];
   speed: [number, number, number];
 };
 type Point = { x: number; y: number; z: number };
 
-const COLORS = ["#5aa6a0", "#5b86c4", "#d98a9b", "#8a9a4b", "#d4a63c", "#c0714f"];
+/** The login screen is always on cream, so it uses the map's light-theme values (lib/colors HUES / globals.css). */
+const COLORS = HUES.map((h) => h.swatch);
 const CREAM = "#f6efe2";
 const GOLD = "#d4a63c";
 const EDGE_FAR = "#bcae9d";
 const EDGE_NEAR = "#8c7b68";
+const NODE_EDGE = "#fffaf3"; // --map-node-edge (light)
+const SHADOW = "rgba(60, 40, 20, 0.22)"; // --map-shadow (light)
 const SELECTED = 0;
+/** ring width as a share of the radius, as on the map (min ~2.5px, max 40%) */
+const NODE_RING = 0.25;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -42,12 +51,24 @@ function makeNetwork() {
     seed = (seed * 16807) % 2147483647;
     return (seed - 1) / 2147483646;
   };
+  // personal colors come from their own sequence, so the network's layout stays exactly as it was
+  let fillSeed = 29;
+  const fillRandom = () => {
+    fillSeed = (fillSeed * 16807) % 2147483647;
+    return (fillSeed - 1) / 2147483646;
+  };
+  const personal = (ring: string) => {
+    // most people's own color differs from their community's, like on the map
+    const pick = COLORS[Math.floor(fillRandom() * COLORS.length)];
+    return pick === ring ? COLORS[(COLORS.indexOf(pick) + 3) % COLORS.length] : pick;
+  };
   const nodes: Node[] = [
     {
       x: 0.3,
       y: 0.02,
       z: 0.35,
       color: COLORS[0],
+      fill: personal(COLORS[0]),
       phase: [random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2],
       speed: [0.6, 0.6, 0.6],
     },
@@ -59,11 +80,13 @@ function makeNetwork() {
     const y = (random() * 2 - 1) * 0.42;
     if (x * x + z * z + (y / 0.42) ** 2 > 1) continue;
     if (nodes.some((node) => (node.x - x) ** 2 + (node.y - y) ** 2 + (node.z - z) ** 2 < 0.09)) continue;
+    const color = COLORS[nodes.length % COLORS.length];
     nodes.push({
       x,
       y,
       z,
-      color: COLORS[nodes.length % COLORS.length],
+      color,
+      fill: personal(color),
       phase: [random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2],
       speed: [0.4 + 0.4 * random(), 0.4 + 0.4 * random(), 0.4 + 0.4 * random()],
     });
@@ -91,7 +114,11 @@ function makeNetwork() {
 
 const NETWORK = makeNetwork();
 
-/** A decorative, draggable 3D network adapted from the provided Orbit auth concept. */
+/**
+ * A decorative, draggable 3D network adapted from the provided Orbit auth concept. People are flat two-tone discs
+ * like the map's (ring = community color, fill = their own color). On the register step the camera eases onto one
+ * person, who grows, gets a gold ring and bounces.
+ */
 export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const modeRef = useRef(mode);
@@ -115,9 +142,12 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
     let height = 0;
     let pixelRatio = 1;
     let yaw = 0.6;
-    let pitch = 0.5;
+    /** the user's own tilt from dragging, on top of the slow automatic sway */
+    let pitchOffset = 0;
     let clock = 0;
     let focusProgress = 0;
+    /** seconds since the register zoom settled, driving the selected node's bounce */
+    let bounceClock = 0;
     let lastFrame = 0;
     let frame = 0;
     let dragging = false;
@@ -125,6 +155,7 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
     let lastY = 0;
 
     const project = (x: number, y: number, z: number, radiusX: number, radiusY: number, centerX: number, centerY: number): Point => {
+      const pitch = 0.5 + (reducedMotion ? 0 : 0.08 * Math.sin(clock * 0.11)) + pitchOffset;
       const x1 = x * Math.cos(yaw) + z * Math.sin(yaw);
       const z1 = -x * Math.sin(yaw) + z * Math.cos(yaw);
       const y1 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
@@ -132,6 +163,14 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
       const scale = 3.4 / (3.4 - z2);
       return { x: centerX + x1 * radiusX * scale, y: centerY + y1 * radiusY * scale, z: z2 };
     };
+
+    /** smooth drift: two slow sines per axis, so nodes wander a little and never jitter */
+    const drift = (node: Node, axis: 0 | 1 | 2, amplitude: number) =>
+      reducedMotion
+        ? 0
+        : amplitude *
+          (Math.sin(clock * node.speed[axis] * 0.45 + node.phase[axis]) * 0.7 +
+            Math.sin(clock * node.speed[axis] * 0.85 + node.phase[axis] * 2.3) * 0.3);
 
     const drawLine = (a: Point, b: Point, color: string, lineWidth: number) => {
       context.strokeStyle = color;
@@ -143,14 +182,31 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
       context.stroke();
     };
 
-    const drawDisc = (point: Point, radius: number, color: string) => {
-      context.fillStyle = color;
+    /** a flat disc like the map's: soft drop shadow, own color inside, community color as a ring, thin paper rim */
+    const drawDisc = (point: Point, radius: number, fill: string, ring: string, squash: number) => {
+      context.save();
+      context.translate(point.x, point.y);
+      if (squash !== 1) context.scale(1 + (1 - squash) * 0.6, squash);
+      const ringWidth = Math.min(radius * 0.4, Math.max(radius * NODE_RING, 2.5));
+      context.shadowColor = SHADOW;
+      context.shadowBlur = 5;
+      context.shadowOffsetY = 1.5;
+      context.fillStyle = fill;
       context.beginPath();
-      context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      context.arc(0, 0, radius, 0, Math.PI * 2);
       context.fill();
-      context.strokeStyle = mixHex(color, "#000000", 0.18);
-      context.lineWidth = 1;
+      context.shadowColor = "transparent";
+      context.beginPath();
+      context.arc(0, 0, radius - ringWidth / 2, 0, Math.PI * 2);
+      context.lineWidth = ringWidth;
+      context.strokeStyle = ring;
       context.stroke();
+      context.beginPath();
+      context.arc(0, 0, radius, 0, Math.PI * 2);
+      context.lineWidth = 1.5;
+      context.strokeStyle = rgba(NODE_EDGE, 0.85);
+      context.stroke();
+      context.restore();
     };
 
     const draw = (delta: number) => {
@@ -164,11 +220,9 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
       const zoom = 1 + 0.8 * focus;
       const centerX = width / 2;
       const centerY = sceneHeight / 2;
+      bounceClock = focusProgress > 0.9 ? bounceClock + delta : 0;
 
-      if (!reducedMotion && !dragging) {
-        yaw += 0.16 * delta * (1 - focus * 0.4);
-        pitch += 0.045 * delta * (1 - focus * 0.4);
-      }
+      if (!reducedMotion && !dragging) yaw += 0.07 * delta * (1 - focus * 0.5);
 
       context.clearRect(0, 0, width, height);
       context.fillStyle = CREAM;
@@ -178,9 +232,9 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
       const radiusY = sceneHeight * (isMobile ? 0.42 : 0.46);
       const projected = NETWORK.nodes.map((node) =>
         project(
-          node.x + (reducedMotion ? 0 : 0.045 * Math.sin(clock * node.speed[0] + node.phase[0])),
-          node.y + (reducedMotion ? 0 : 0.03 * Math.sin(clock * node.speed[1] + node.phase[1])),
-          node.z + (reducedMotion ? 0 : 0.045 * Math.sin(clock * node.speed[2] + node.phase[2])),
+          node.x + drift(node, 0, 0.04),
+          node.y + drift(node, 1, 0.028),
+          node.z + drift(node, 2, 0.04),
           radiusX,
           radiusY,
           centerX,
@@ -203,11 +257,23 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
         const depthScale = 0.82 + 0.36 * depth;
         return baseRadius * depthScale * (1 + (zoom - 1) * 0.3) * (index === SELECTED ? 1 + 0.9 * focus : 1);
       });
-      const colors = points.map((point, index) => {
-        const depth = clamp((point.z + 1) / 2, 0, 1);
-        const tint = index === SELECTED ? 0.22 * (1 - depth) * (1 - focus) : 0.22 * (1 - depth) * (1 - focus) + 0.6 * focus;
-        return mixHex(mixHex(NETWORK.nodes[index].color, GOLD, index === SELECTED ? focus : 0), CREAM, tint);
-      });
+
+      // Register step: the chosen person hops in place under gravity: a quick parabola, a squash on landing, repeat.
+      let squash = 1;
+      if (!reducedMotion && bounceClock > 0) {
+        const PERIOD = 0.9;
+        const p = (bounceClock % PERIOD) / PERIOD;
+        const hop = 4 * p * (1 - p);
+        const settle = Math.min(1, bounceClock / 0.4);
+        points[SELECTED] = { ...points[SELECTED], y: points[SELECTED].y - hop * radii[SELECTED] * 1.1 * settle };
+        squash = 1 - 0.14 * settle * Math.max(0, 1 - p / 0.12) - 0.14 * settle * Math.max(0, (p - 0.88) / 0.12);
+      }
+
+      // far nodes (and, on the register step, everyone but the chosen one) fade into the paper; they stay flat
+      const tintOf = (index: number) => {
+        const depth = clamp((points[index].z + 1) / 2, 0, 1);
+        return index === SELECTED ? 0.22 * (1 - depth) * (1 - focus) : 0.22 * (1 - depth) * (1 - focus) + 0.6 * focus;
+      };
 
       const lineWidth = clamp(Math.min(width, sceneHeight) * 0.0032, 1.5, 3.2) * (1 + (zoom - 1) * 0.3);
       NETWORK.edges.forEach(([start, end]) => {
@@ -223,6 +289,8 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
         order.push(SELECTED);
       }
       order.forEach((index) => {
+        const node = NETWORK.nodes[index];
+        const tint = tintOf(index);
         if (index === SELECTED && focus > 0.02) {
           context.strokeStyle = mixHex(CREAM, GOLD, 0.55 * focus);
           context.lineWidth = 2.5;
@@ -230,7 +298,13 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
           context.arc(points[index].x, points[index].y, radii[index] * 1.3, 0, Math.PI * 2);
           context.stroke();
         }
-        drawDisc(points[index], radii[index], colors[index]);
+        drawDisc(
+          points[index],
+          radii[index],
+          mixHex(node.fill, CREAM, tint),
+          mixHex(node.color, CREAM, tint),
+          index === SELECTED ? squash : 1,
+        );
       });
 
       if (dimRef.current) {
@@ -265,7 +339,7 @@ export function PreviewGraph({ mode, dim }: { mode: AuthMode; dim: boolean }) {
     const onPointerMove = (event: PointerEvent) => {
       if (!dragging) return;
       yaw += (event.clientX - lastX) * 0.008;
-      pitch += (event.clientY - lastY) * 0.006;
+      pitchOffset = clamp(pitchOffset + (event.clientY - lastY) * 0.006, -0.9, 0.9);
       lastX = event.clientX;
       lastY = event.clientY;
       if (reducedMotion) draw(0);

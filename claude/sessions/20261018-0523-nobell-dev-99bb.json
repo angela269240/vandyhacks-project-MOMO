@@ -1,0 +1,52 @@
+{
+  "id": "20261018-0523-nobell-dev-99bb",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Nobell0656",
+  "branch": "nobell/dev",
+  "base": "8c7de30",
+  "started": "2026-10-18T10:23:32.630Z",
+  "ended": "2026-10-18T11:10:00Z",
+  "status": "done",
+  "goal": "Login network restyle (two-tone nodes), Sora site-wide, fitFocused null guard app/layout.tsx app/globals.css components/map/SocialGraph.tsx",
+  "summary": "Login/signup backdrop (components/auth/PreviewGraph.tsx) keeps its original 34-node 3D node-and-edge network (same seeded layout, edges, sizes, placement) but nodes are now flat two-tone discs like the map: ring = a community color, fill = a personal color (both from lib/colors HUES swatches, the light-theme palette since the login is always cream), soft shadow + paper rim. Motion: two-sine smooth drift, slower yaw (0.07 rad/s), gentle pitch sway instead of continuous tumbling, drag tilt clamped. Register step keeps the zoom/grow/gold ring and adds a gravity bounce with landing squash on the chosen node. Respects prefers-reduced-motion (static). A liquid-bubble version was tried and rejected by the human. Sora replaces Inter + Space Grotesk site-wide: next/font in app/layout.tsx (--font-sora), globals.css --font-sans and --font-heading, and the map canvas reads --font-sora. fitFocused in SocialGraph now returns early when force-graph's getGraphBbox is null (race right after the map mounts) instead of crashing; holdCamera moved after the check.",
+  "claims": [
+    "components/auth/PreviewGraph.tsx"
+  ],
+  "files_touched": [
+    "components/auth/PreviewGraph.tsx",
+    "app/layout.tsx",
+    "app/globals.css",
+    "components/map/SocialGraph.tsx"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "No four-node loading animation exists in the repo (only the 'Mapping the room...' text), so only the font applies there",
+      "why": "The brief described a loader that isn't on any branch."
+    },
+    {
+      "what": "Signup bounce is new",
+      "why": "The brief expected an existing bounce; none existed. Added a restrained gravity hop; drop it if unwanted."
+    },
+    {
+      "what": "Human asked: no further edits to the homepage map beyond the font and the crash guard",
+      "why": "Explicit instruction after reviewing the font."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "In-memory demo: login and signup before/after screenshots; desktop and phone-width login layouts unchanged; network animates with ?motion=1 (this machine has reduce-motion on, so by default it's static); map renders in Sora; after the guard, opening the map after sign-in shows no error and settles into the normal fit."
+  },
+  "next_steps": [],
+  "open_questions": [
+    "Room Notes editor keeps font-mono on purpose.",
+    "Signup bounce not visually confirmed frame by frame."
+  ],
+  "blockers": [],
+  "conflict_notes": []
+}
