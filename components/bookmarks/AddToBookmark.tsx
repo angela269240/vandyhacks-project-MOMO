@@ -1,12 +1,12 @@
 "use client";
 
-import { Check, Plus } from "lucide-react";
+import { Check, Pin, Plus } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useBookmarks } from "@/hooks/useBookmarks";
 import type { GraphGroup } from "@/lib/types";
 
-/** Mini window from double-clicking a bubble: "Add to: [bookmarks]". */
+/** Mini window from double-clicking a bubble: pin it, or "Add to: [bookmarks]". */
 export function AddToBookmark({
   group,
   at,
@@ -16,7 +16,8 @@ export function AddToBookmark({
   at: { x: number; y: number };
   onClose: () => void;
 }) {
-  const { bookmarks, add, toggleGroup } = useBookmarks();
+  const { bookmarks, pinnedIds, add, toggleGroup, togglePin } = useBookmarks();
+  const pinned = pinnedIds.includes(group.id);
   const [name, setName] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,6 +46,14 @@ export function AddToBookmark({
       role="dialog"
       aria-label={`Add ${group.name} to a bookmark`}
     >
+      <button
+        onClick={() => togglePin(group.id)}
+        aria-pressed={pinned}
+        className="mb-1 flex w-full items-center gap-2 rounded-lg border-b border-border px-2 py-1.5 text-left text-sm hover:bg-foreground/10"
+      >
+        <Pin className={`size-4 ${pinned ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+        <span className="truncate">{pinned ? "Pinned" : "Pin"} {group.name}</span>
+      </button>
       <div className="truncate px-2 pt-1 pb-2 text-xs text-muted-foreground">
         Add <span className="font-medium text-foreground">{group.name}</span> to:
       </div>

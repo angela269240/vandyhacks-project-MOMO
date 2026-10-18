@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Plus } from "lucide-react";
+import { Menu, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
@@ -8,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { AddToBookmark } from "@/components/bookmarks/AddToBookmark";
-import { BookmarksPane } from "@/components/bookmarks/BookmarksPane";
 import { OrbitLogo } from "@/components/brand/OrbitLogo";
 import { RequestsBell } from "@/components/friends/RequestsBell";
 import { NewGroupDialog } from "@/components/groups/NewGroupDialog";
@@ -23,12 +22,13 @@ import { Button } from "@/components/ui/button";
 import { refreshGraph, useGraph } from "@/hooks/useGraph";
 import { useMe } from "@/hooks/useMe";
 import { api, roomPath } from "@/lib/client/api";
-import { buildChips, type ChipState, passesChips, searchMatches, withinDegrees } from "@/lib/client/filters";
+import { passesFilters, type SearchMatches, searchMatches, withinDegrees } from "@/lib/client/filters";
 import { scene, sceneEvents } from "@/lib/client/scene";
 import { identityColor } from "@/lib/colors";
 import type { Group, GraphGroup, GraphUser } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { DegreesSlider } from "./DegreesSlider";
-import { FilterBar } from "./FilterBar";
+import { MapSidebar, type SearchPick, SIDEBAR_WIDTH } from "./MapSidebar";
 import type { MapApi } from "./SocialGraph";
 
 const SocialGraph = dynamic(() => import("./SocialGraph"), { ssr: false });
@@ -53,10 +53,12 @@ export function MapScene() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
-  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [addTo, setAddTo] = useState<{ group: GraphGroup; at: { x: number; y: number } } | null>(null);
-  const [chipStates, setChipStates] = useState<Record<string, ChipState>>({});
+  const [uncheckedTags, setUncheckedTags] = useState<Set<string>>(() => new Set());
+  const [activeBookmarkId, setActiveBookmarkId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<SearchPick | null>(null);
   const [degrees, setDegrees] = useState(Infinity);
   const entering = useRef(false);
   const prevRoom = useRef<string | null>(roomName);
@@ -68,7 +70,7 @@ export function MapScene() {
   const roomGroup = roomName ? graph?.groups.find((g) => g.name.toLowerCase() === roomName.toLowerCase()) : undefined;
   const roomGroupId = roomGroup?.id ?? null;
   const bookmarks = useMemo(() => me?.bookmarks ?? [], [me]);
-  const chips = useMemo(() => buildChips(bookmarks), [bookmarks]);
+  const activeBookmark = bookmarks.find((b) => b.id === activeBookmarkId) ?? null;
 
   // ---- who and what is in focus ----
   const visibleUserIds = useMemo(
@@ -78,7 +80,7 @@ export function MapScene() {
   const focusedGroupIds = useMemo(() => {
     const out = new Set<number>();
     for (const g of graph?.groups ?? []) {
-      if (!passesChips(g, chips, chipStates)) continue;
+      if (!passesFilters(g, uncheckedTags, activeBookmark)) continue;
       if (visibleUserIds && g.id !== myGroupId) {
         const hasVisible = graph!.users.some((u) => u.groupId === g.id && visibleUserIds.has(u.id));
         if (!hasVisible) continue;
@@ -87,12 +89,27 @@ export function MapScene() {
     }
     if (roomGroupId !== null) out.add(roomGroupId);
     return out;
-  }, [graph, chips, chipStates, visibleUserIds, myGroupId, roomGroupId]);
-  // Search only highlights and pulls matches toward the middle; it never hides bubbles or moves the camera.
-  const search = useMemo(
-    () => (graph ? searchMatches(query, graph.groups, graph.users, bookmarks) : null),
-    [graph, query, bookmarks],
-  );
+  }, [graph, uncheckedTags, activeBookmark, visibleUserIds, myGroupId, roomGroupId]);
+  // Search only highlights and pulls matches toward the middle; it never hides bubbles. Typing never moves the
+  // camera; picking a result narrows the highlight to that one bubble or person and glides over to it.
+  const search = useMemo((): SearchMatches | null => {
+    if (picked?.kind === "group") return { groupIds: new Set([picked.id]), userIds: new Set() };
+    if (picked?.kind === "user") return { groupIds: new Set(), userIds: new Set([picked.id]) };
+    return graph ? searchMatches(query, graph.groups, graph.users) : null;
+  }, [graph, query, picked]);
+
+  const onQuery = (q: string) => {
+    setQuery(q);
+    setPicked(null);
+  };
+  const onPick = (pick: SearchPick, label: string) => {
+    setQuery(label);
+    setPicked(pick);
+    const inset = menuOpen && window.innerWidth >= 640 ? SIDEBAR_WIDTH + 12 : 0;
+    // after the re-render, once the layout has moved the pick to its new spot
+    setTimeout(() => apiRef.current?.centerOn(pick.kind === "group" ? { groupId: pick.id } : { userId: pick.id }, inset), 60);
+    setSelectedId(pick.kind === "user" ? pick.id : null);
+  };
 
   useEffect(() => {
     const offPause = sceneEvents.on("map-pause", () => apiRef.current?.pause());
@@ -231,17 +248,18 @@ export function MapScene() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.25 }}
-            className="pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-col items-center gap-2.5 p-3 sm:p-4"
+            className="pointer-events-none fixed inset-x-0 top-0 z-20 flex items-center p-3 sm:p-4"
           >
             <div className="flex w-full items-center justify-between gap-3">
-              <div className="pointer-events-auto flex items-center gap-2">
+              {/* tucked away while the menu is open: the sidebar sits right on top of it */}
+              <div className={cn("flex items-center gap-2 transition-opacity", menuOpen ? "opacity-0" : "pointer-events-auto")}>
                 <button
-                  onClick={() => setBookmarksOpen((o) => !o)}
-                  aria-label="Bookmarks"
-                  aria-expanded={bookmarksOpen}
+                  onClick={() => setMenuOpen((o) => !o)}
+                  aria-label="Menu"
+                  aria-expanded={menuOpen}
                   className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"
                 >
-                  <Bookmark className="size-[18px]" />
+                  <Menu className="size-[18px]" />
                 </button>
                 <OrbitLogo size={28} />
                 <h1 className="font-heading text-lg font-semibold tracking-tight">Orbit</h1>
@@ -274,7 +292,6 @@ export function MapScene() {
                 <ThemeSwitch />
               </div>
             </div>
-            <FilterBar chips={chips} states={chipStates} onStates={setChipStates} query={query} onQuery={setQuery} />
           </motion.header>
         )}
       </AnimatePresence>
@@ -316,13 +333,20 @@ export function MapScene() {
         )}
       </AnimatePresence>
 
-      <BookmarksPane
-        open={bookmarksOpen && onMap}
-        onClose={() => setBookmarksOpen(false)}
+      <MapSidebar
+        open={menuOpen && onMap}
+        onClose={() => setMenuOpen(false)}
         groups={graph?.groups ?? []}
-        onApply={(id) =>
-          setChipStates(Object.fromEntries(chips.map((c) => [c.key, c.key === `bookmark:${id}` ? "on" : "none"])))
-        }
+        users={graph?.users ?? []}
+        query={query}
+        onQuery={onQuery}
+        picked={picked}
+        onPick={onPick}
+        uncheckedTags={uncheckedTags}
+        onUncheckedTags={setUncheckedTags}
+        activeBookmarkId={activeBookmark?.id ?? null}
+        onActiveBookmark={setActiveBookmarkId}
+        onEnterGroup={(g) => enterGroup(g)}
       />
       {addTo && <AddToBookmark group={addTo.group} at={addTo.at} onClose={() => setAddTo(null)} />}
 

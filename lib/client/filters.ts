@@ -1,64 +1,27 @@
-import { CATEGORIES } from "../categories";
 import type { Bookmark, Edge, GraphGroup, GraphUser } from "../types";
 
 /**
- * Filter chips cycle: on (included) → off (unchecked) → exclude (✕) → none (no rule) → on.
- * - Excludes always win.
- * - While any chip is on/off, a bubble must match an "on" chip to pass.
- * - If every chip is "none" or "exclude", includes don't apply at all.
+ * Tag filters: every bubble has exactly one category tag. A bubble is shown unless its tag is unchecked.
+ * A bookmark can additionally narrow the map to just its bubbles.
  */
-export type ChipState = "on" | "off" | "exclude" | "none";
-
-export const nextChipState: Record<ChipState, ChipState> = { on: "off", off: "exclude", exclude: "none", none: "on" };
-
-export type Chip = { key: string; label: string; kind: "tag" | "bookmark"; groupIds?: Set<number> };
-
-export function buildChips(bookmarks: Bookmark[]): Chip[] {
-  return [
-    ...bookmarks.map((b) => ({ key: `bookmark:${b.id}`, label: b.name, kind: "bookmark" as const, groupIds: new Set(b.groupIds) })),
-    ...CATEGORIES.map((c) => ({ key: `tag:${c}`, label: c, kind: "tag" as const })),
-  ];
-}
-
-const chipMatches = (chip: Chip, g: GraphGroup) =>
-  chip.kind === "tag" ? g.category === chip.label : (chip.groupIds?.has(g.id) ?? false);
-
-export const stateOf = (states: Record<string, ChipState>, key: string): ChipState => states[key] ?? "on";
-
-export function passesChips(g: GraphGroup, chips: Chip[], states: Record<string, ChipState>) {
-  let includeRules = false;
-  let included = false;
-  for (const chip of chips) {
-    const s = stateOf(states, chip.key);
-    const m = chipMatches(chip, g);
-    if (s === "exclude" && m) return false;
-    if (s === "on" || s === "off") includeRules = true;
-    if (s === "on" && m) included = true;
-  }
-  return !includeRules || included;
+export function passesFilters(g: GraphGroup, uncheckedTags: Set<string>, bookmark: Bookmark | null) {
+  if (uncheckedTags.has(g.category)) return false;
+  return !bookmark || bookmark.groupIds.includes(g.id);
 }
 
 export type SearchMatches = { groupIds: Set<number>; userIds: Set<string> };
 
 /**
- * What the map highlights for a search: bubbles by name, tag or bookmark name, and people by name.
- * Null when the box is empty. Unlike the chips, search never hides anything; it only highlights and pulls matches in.
+ * What the map highlights for a search: bubbles and people by name only.
+ * Null when the box is empty. Search never hides anything; it only highlights and pulls matches in.
  */
-export function searchMatches(query: string, groups: GraphGroup[], users: GraphUser[], bookmarks: Bookmark[]): SearchMatches | null {
+export function searchMatches(query: string, groups: GraphGroup[], users: GraphUser[]): SearchMatches | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;
-  const groupIds = new Set(
-    groups
-      .filter(
-        (g) =>
-          g.name.toLowerCase().includes(q) ||
-          g.category.toLowerCase().includes(q) ||
-          bookmarks.some((b) => b.groupIds.includes(g.id) && b.name.toLowerCase().includes(q)),
-      )
-      .map((g) => g.id),
-  );
-  const userIds = new Set(users.filter((u) => u.name.toLowerCase().includes(q)).map((u) => u.id));
-  return { groupIds, userIds };
+  return {
+    groupIds: new Set(groups.filter((g) => g.name.toLowerCase().includes(q)).map((g) => g.id)),
+    userIds: new Set(users.filter((u) => u.name.toLowerCase().includes(q)).map((u) => u.id)),
+  };
 }
 
 /** Everyone within `degrees` friendship hops of `me` (Infinity = everyone reachable or not). */

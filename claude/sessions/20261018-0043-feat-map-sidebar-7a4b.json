@@ -1,0 +1,65 @@
+{
+  "id": "20261018-0043-feat-map-sidebar-7a4b",
+  "continues": null,
+  "agent": "claude-code",
+  "model": "claude-opus-5-5",
+  "human": "Eileen Luo",
+  "branch": "feat/map-sidebar",
+  "base": "888cf56",
+  "worktree": "/Users/home/Desktop/repositories/oraclehackathon26/momo-sidebar",
+  "started": "2026-10-18T05:43:37.427Z",
+  "ended": "2026-10-18T06:05:00Z",
+  "status": "done",
+  "goal": "Hamburger sidebar on the map: name-only search with results, Pinned, Bookmarks, tag Filters with mini search",
+  "summary": "The top FilterBar and the separate BookmarksPane are replaced by one left sidebar (components/map/MapSidebar.tsx) behind a hamburger in the top bar. Top: search that matches only person and bubble names (lib/client/filters.ts searchMatches no longer matches tags or bookmark names), with a results dropdown (Bubbles / People, match highlighted). Typing keeps Nobel's behaviour (highlight + pull matches to the middle, camera still); picking a result (click or Enter) narrows the highlight to that one bubble/person, glides the camera there with the new MapApi.centerOn (aims at the layout anchor, offset for the sidebar), and opens a person's profile card. Pinned: bubbles you pinned from the double-click popup (AddToBookmark now has a Pin row); click enters, pin icon unpins. Bookmarks: the old pane's content as BookmarksSection; clicking a bookmark toggles 'show only these bubbles'. Filters: the 10 category tags as plain on/off checkboxes with All/None, plus a mini tag search whose popup shows a check on the right of ticked tags. The four-state chips (on/off/exclude/none) and bookmark chips are gone.",
+  "claims": [
+    "components/map/MapScene.tsx",
+    "components/map/MapSidebar.tsx",
+    "components/map/FilterBar.tsx",
+    "components/map/SocialGraph.tsx (centerOn only)",
+    "components/bookmarks/**",
+    "lib/client/filters.ts",
+    "hooks/useBookmarks.ts"
+  ],
+  "files_touched": [
+    "components/map/MapSidebar.tsx",
+    "components/map/MapScene.tsx",
+    "components/map/SocialGraph.tsx",
+    "components/map/FilterBar.tsx (deleted)",
+    "components/bookmarks/BookmarksPane.tsx -> BookmarksSection.tsx",
+    "components/bookmarks/AddToBookmark.tsx",
+    "hooks/useBookmarks.ts",
+    "lib/client/filters.ts"
+  ],
+  "commits": [],
+  "uncommitted": false,
+  "decisions": [
+    {
+      "what": "Pins live in the user's bookmarks JSON as a reserved entry id '__pinned__' (hooks/useBookmarks.ts PINNED_ID), hidden from every bookmark list.",
+      "why": "No schema change or migration on the shared Oracle DB; the existing PATCH /api/users/:id bookmarks path and zod schema already accept it."
+    },
+    {
+      "what": "Tag filters are binary (unchecked tags hide bubbles); the exclude state and bookmark chips were dropped.",
+      "why": "Requested simple select/deselect; bookmarks have their own section and narrow the map from there."
+    },
+    {
+      "what": "centerOn aims at layout.current.anchors, called 60ms after the pick.",
+      "why": "A picked bubble becomes a search match, and computeLayout(priority) moves it to the middle; aiming at its drawn position glided to where it used to be."
+    }
+  ],
+  "verification": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "not run",
+    "manual": "next dev (in-memory world), dark theme, 1024x768: opened menu, searched 'ch'/'badm' (results + highlight), picked bubble and person (camera + profile card), pinned via double-click popup, created bookmark, ticked/unticked tags via mini search popup; bookmark/pin PATCH 200. Light theme and mobile width not checked."
+  },
+  "next_steps": [
+    "Check the sidebar in light theme and at phone width (sidebar is 300px, max calc(100vw-24px)).",
+    "Open a PR from feat/map-sidebar to main."
+  ],
+  "open_questions": [],
+  "blockers": [],
+  "conflict_notes": [
+    "Another session was rewriting the camera in components/map/SocialGraph.tsx (new ./camera module) in the momo-main worktree; this branch only adds MapApi.centerOn there. If both land, re-add centerOn on top of the new camera code (it uses fg.centerAt/fg.zoom and layout anchors)."
+  ]
+}
