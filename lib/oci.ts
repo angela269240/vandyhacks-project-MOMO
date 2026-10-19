@@ -1,14 +1,11 @@
 import "server-only";
 import * as common from "oci-common";
 
-export const ociConfigured = () =>
-  Boolean(
-    process.env.OCI_TENANCY_OCID &&
-      process.env.OCI_USER_OCID &&
-      process.env.OCI_FINGERPRINT &&
-      process.env.OCI_PRIVATE_KEY &&
-      process.env.OCI_REGION,
-  );
+/**
+ * Oracle Cloud services (Speech, Generative AI, Object Storage) are disconnected: this always reports "not
+ * configured", so speech and AI features show as not set up and avatars/archives use the local fallback.
+ */
+export const ociConfigured = () => false;
 
 let provider: common.SimpleAuthenticationDetailsProvider | null = null;
 

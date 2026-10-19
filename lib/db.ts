@@ -3,8 +3,8 @@ import oracledb from "oracledb";
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 oracledb.fetchAsString = [oracledb.CLOB];
 
-export const oracleConfigured = () =>
-  Boolean(process.env.ORACLE_CONNECT_STRING && process.env.ORACLE_USER && process.env.ORACLE_PASSWORD);
+/** Oracle Autonomous Database is disconnected: the app always runs on the in-memory demo store (lib/store/memory.ts). */
+export const oracleConfigured = () => false;
 
 // One small pool per function instance, reused across invocations (and across dev hot reloads).
 const g = globalThis as unknown as { __socialMapperPool?: Promise<oracledb.Pool> };
